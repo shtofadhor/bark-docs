@@ -1,0 +1,2837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BARK/PPBA System Pipelines</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #1c2230;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    --blue: #58a6ff;
+    --purple: #bc8cff;
+    --green: #3fb950;
+    --teal: #39d353;
+    --cyan: #76e3ea;
+    --orange: #f0883e;
+    --yellow: #e3b341;
+    --red: #f85149;
+    --pink: #f778ba;
+    --p1-primary: #58a6ff;
+    --p1-secondary: #bc8cff;
+    --p1-accent: #79c0ff;
+    --p2-primary: #3fb950;
+    --p2-secondary: #39d353;
+    --p2-accent: #76e3ea;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    min-height: 100vh;
+    padding: 24px;
+  }
+
+  header { text-align: center; margin-bottom: 32px; }
+
+  header h1 {
+    font-size: 2.2rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--blue), var(--purple), var(--teal));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 8px;
+  }
+
+  header p { color: var(--text-muted); font-size: 1.05rem; }
+
+  .controls-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+
+  .speed-label { color: var(--text-muted); font-size: 0.9rem; }
+
+  .speed-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    padding: 5px 14px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+  }
+
+  .speed-btn.active, .speed-btn:hover {
+    background: var(--surface);
+    border-color: var(--blue);
+    color: var(--blue);
+  }
+
+  .legend {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    align-items: center;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 16px;
+    margin-bottom: 28px;
+    font-size: 0.9rem;
+  }
+
+  .legend-item { display: flex; align-items: center; gap: 6px; color: var(--text-muted); }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+  .pipeline-section { margin-bottom: 48px; }
+
+  .pipeline-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .pipeline-title { display: flex; align-items: center; gap: 12px; }
+  .pipeline-title h2 { font-size: 1.35rem; font-weight: 600; }
+
+  .pipeline-badge {
+    padding: 4px 14px;
+    border-radius: 20px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .badge-offline { background: rgba(88,166,255,0.15); color: var(--p1-primary); border: 1px solid rgba(88,166,255,0.3); }
+  .badge-realtime { background: rgba(63,185,80,0.15); color: var(--p2-primary); border: 1px solid rgba(63,185,80,0.3); }
+
+  .run-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 22px;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
+  }
+
+  .run-btn-p1 { background: linear-gradient(135deg, var(--p1-primary), var(--p1-secondary)); color: #fff; }
+  .run-btn-p2 { background: linear-gradient(135deg, var(--p2-primary), var(--p2-secondary)); color: #fff; }
+  .run-btn:hover { opacity: 0.88; transform: translateY(-1px); }
+  .run-btn:active { transform: translateY(0); }
+  .run-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  .pipeline-canvas {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 28px 24px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Stage wrapper for zoom effect */
+  .stage-wrapper {
+    position: relative;
+    transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+    transform-origin: center top;
+  }
+  .stage-wrapper.zoomed {
+    transform: scale(1.05);
+    z-index: 10;
+  }
+
+  .stage {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 14px;
+    position: relative;
+    cursor: pointer;
+    transition: border-color 0.25s, box-shadow 0.25s;
+    user-select: none;
+  }
+
+  .stage:hover { box-shadow: 0 6px 20px rgba(0,0,0,0.35); }
+
+  .stage.active {
+    border-color: var(--stage-color, var(--blue));
+    box-shadow: 0 0 0 1px var(--stage-color, var(--blue)), 0 0 20px rgba(88,166,255,0.25);
+  }
+
+  .stage.done { border-color: rgba(63,185,80,0.5); }
+
+  .stage-number {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--stage-color, var(--blue));
+    color: #fff;
+    font-size: 0.78rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 8px;
+    flex-shrink: 0;
+  }
+
+  .stage-name { font-size: 18px; font-weight: 700; margin-bottom: 4px; color: var(--stage-color, var(--blue)); }
+  .stage-model { font-size: 14px; color: var(--text-muted); margin-bottom: 6px; font-style: italic; }
+  .stage-desc { font-size: 14px; color: var(--text-muted); line-height: 1.5; }
+
+  .stage-output {
+    margin-top: 8px;
+    font-size: 13px;
+    color: var(--stage-color, var(--blue));
+    opacity: 0.85;
+    line-height: 1.4;
+    border-top: 1px solid var(--border);
+    padding-top: 6px;
+  }
+
+  /* Shared data panel — full-width panel below pipeline canvas */
+  .shared-data-panel {
+    display: none;
+    width: 100%;
+    margin-top: 12px;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.03);
+    min-height: 120px;
+    animation: panelFadeIn 0.35s ease both;
+  }
+
+  .shared-data-panel.visible { display: block; }
+
+  @keyframes panelFadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Hidden per-stage panels (keep in DOM for content, never shown inline) */
+  .data-panel { display: none !important; }
+
+  .dp-row {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 0;
+  }
+
+  .dp-input {
+    background: rgba(56, 100, 160, 0.18);
+    border-right: 1px solid var(--border);
+    padding: 18px 20px;
+  }
+
+  .dp-action {
+    background: rgba(30, 30, 50, 0.6);
+    padding: 18px 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 90px;
+    gap: 6px;
+  }
+
+  .dp-output {
+    background: rgba(40, 100, 60, 0.18);
+    border-left: 1px solid var(--border);
+    padding: 18px 20px;
+  }
+
+  .dp-label {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    margin-bottom: 8px;
+  }
+
+  .dp-input .dp-label { color: #7cb3ff; }
+  .dp-action .dp-label { color: var(--text-muted); font-size: 11px; text-align: center; }
+  .dp-output .dp-label { color: #56d080; }
+
+  .dp-text {
+    font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .dp-input .dp-text { color: #a8c8ff; }
+  .dp-output .dp-text { color: #76e0a0; }
+
+  .dp-action-text {
+    font-size: 14px;
+    color: var(--text-muted);
+    font-style: italic;
+    text-align: center;
+    line-height: 1.5;
+  }
+
+  .dp-arrow { font-size: 1.5rem; color: var(--text-muted); }
+
+  .connector {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    flex-shrink: 0;
+  }
+
+  .connector-arrow { font-size: 1.1rem; color: var(--text-muted); line-height: 1; }
+
+  @keyframes stage-pulse {
+    0%, 100% { box-shadow: 0 0 0 1px var(--stage-color, var(--blue)), 0 0 10px rgba(88,166,255,0.2); }
+    50% { box-shadow: 0 0 0 2px var(--stage-color, var(--blue)), 0 0 28px rgba(88,166,255,0.45); }
+  }
+
+  .stage.processing { animation: stage-pulse 1s ease-in-out infinite; }
+
+  @keyframes check-appear {
+    0% { opacity: 0; transform: scale(0); }
+    60% { opacity: 1; transform: scale(1.3); }
+    100% { opacity: 1; transform: scale(1); }
+  }
+
+  .stage-check {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    font-size: 0.95rem;
+    opacity: 0;
+    color: var(--green);
+  }
+
+  .stage-check.visible { animation: check-appear 0.4s forwards; }
+
+  .pipeline-flow { display: flex; flex-direction: column; gap: 12px; }
+  .flow-row { display: flex; align-items: flex-start; gap: 8px; }
+  .flow-row .stage-wrapper { flex: 1; }
+
+  .p1-grid {
+    display: grid;
+    grid-template-columns: 1fr 36px 1fr 36px 1fr;
+    gap: 12px;
+    align-items: start;
+  }
+
+  .p1-grid .stage { min-height: 130px; }
+
+  .v-connector-group {
+    display: flex;
+    justify-content: space-between;
+    padding: 0 60px;
+    grid-column: 1 / -1;
+  }
+
+  .v-conn { display: flex; flex-direction: column; align-items: center; gap: 2px; color: var(--text-muted); font-size: 0.65rem; }
+  .v-conn-line { width: 2px; height: 20px; background: var(--border); }
+
+  /* Modal */
+  .stage-modal {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  .stage-modal.visible { display: flex; }
+
+  .modal-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 28px;
+    max-width: 560px;
+    width: 100%;
+    position: relative;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  .modal-close {
+    position: absolute;
+    top: 14px; right: 16px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.4rem;
+    cursor: pointer;
+    line-height: 1;
+  }
+
+  .modal-title { font-size: 1.2rem; font-weight: 700; margin-bottom: 6px; }
+  .modal-model { font-size: 0.88rem; color: var(--text-muted); font-style: italic; margin-bottom: 14px; }
+  .modal-section { margin-bottom: 14px; }
+  .modal-section-label {
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .modal-code {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 10px 14px;
+    font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+    font-size: 13px;
+    color: var(--cyan);
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .modal-code.input-code { color: #a8c8ff; background: rgba(56, 100, 160, 0.12); border-color: rgba(56,100,160,0.3); }
+  .modal-code.output-code { color: #76e0a0; background: rgba(40, 100, 60, 0.12); border-color: rgba(40,100,60,0.3); }
+
+  .modal-desc { font-size: 15px; color: var(--text-muted); line-height: 1.6; }
+
+  .p2-fork {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-top: 12px;
+  }
+
+  .fork-path {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+  }
+
+  .fork-path-title {
+    font-size: 0.88rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .fork-path-rag .fork-path-title { color: var(--cyan); }
+  .fork-path-full .fork-path-title { color: var(--orange); }
+  .fork-stages { display: flex; flex-direction: column; gap: 8px; }
+  .fork-stages .stage { min-height: unset; }
+  .fork-stages .stage-wrapper { width: 100%; }
+
+  .progress-bar-wrap {
+    height: 3px;
+    background: var(--surface2);
+    border-radius: 2px;
+    margin-bottom: 18px;
+    overflow: hidden;
+  }
+
+  .progress-bar { height: 100%; border-radius: 2px; transition: width 0.4s ease; width: 0%; }
+  .progress-p1 { background: linear-gradient(90deg, var(--p1-primary), var(--p1-secondary)); }
+  .progress-p2 { background: linear-gradient(90deg, var(--p2-primary), var(--p2-accent)); }
+
+  .final-output {
+    margin-top: 20px;
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+    padding: 14px 18px;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .final-output-icon { font-size: 1.5rem; flex-shrink: 0; }
+  .final-output-text strong { color: var(--text); display: block; margin-bottom: 4px; font-size: 1rem; }
+
+  .token-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    background: rgba(88,166,255,0.1);
+    border: 1px solid rgba(88,166,255,0.2);
+    border-radius: 20px;
+    font-size: 0.78rem;
+    color: var(--blue);
+    margin-top: 4px;
+  }
+
+  .divider { border: none; border-top: 1px solid var(--border); margin: 36px 0; }
+
+  /* Transformation Journey */
+  .journey-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 28px 32px;
+    margin: 36px 0;
+    position: relative;
+  }
+
+  .journey-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .journey-subtitle {
+    font-size: 0.88rem;
+    color: var(--text-muted);
+    margin-bottom: 24px;
+  }
+
+  .journey-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    position: relative;
+  }
+
+  .journey-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    position: relative;
+  }
+
+  .journey-step:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    left: 19px;
+    top: 44px;
+    bottom: -16px;
+    width: 2px;
+    background: var(--border);
+  }
+
+  .journey-icon-wrap {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1;
+  }
+
+  .journey-content {
+    flex: 1;
+    padding-bottom: 20px;
+  }
+
+  .journey-step-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 4px;
+  }
+
+  .journey-step-text {
+    font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    padding: 10px 14px;
+    border-radius: 8px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .journey-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-top: 5px;
+    margin-right: 4px;
+  }
+
+  .dp-why {
+    background: rgba(255,200,80,0.08);
+    border-top: 1px solid rgba(255,200,80,0.15);
+    padding: 14px 20px;
+    font-size: 14px;
+    color: #e3b341;
+    line-height: 1.6;
+    font-style: italic;
+  }
+
+  .dp-why-label {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: #c89a30;
+    margin-bottom: 2px;
+    font-style: normal;
+  }
+
+  .modal-why {
+    background: rgba(255,200,80,0.07);
+    border: 1px solid rgba(227,179,65,0.25);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 14px;
+    font-size: 13.5px;
+    color: #e3b341;
+    line-height: 1.55;
+  }
+
+  .modal-why-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: #c89a30;
+    margin-bottom: 4px;
+  }
+
+  .routing-box {
+    background: var(--surface2);
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin: 12px 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: border-color 0.25s;
+  }
+
+  .routing-box:hover { border-color: var(--blue); }
+  .routing-box.active { border-color: var(--p2-primary); box-shadow: 0 0 15px rgba(63,185,80,0.2); }
+
+  .routing-diamond {
+    width: 36px;
+    height: 36px;
+    background: var(--surface);
+    border: 2px solid var(--p2-primary);
+    transform: rotate(45deg);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .routing-diamond-inner {
+    transform: rotate(-45deg);
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--p2-primary);
+  }
+
+  .routing-paths { display: flex; flex-direction: column; gap: 4px; }
+
+  .routing-path {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.86rem;
+  }
+
+  .routing-path-arrow { color: var(--text-muted); }
+  .path-rag { color: var(--cyan); }
+  .path-full { color: var(--orange); }
+
+  .status-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.82rem;
+    font-weight: 600;
+  }
+
+  .status-idle { background: rgba(139,148,158,0.1); color: var(--text-muted); border: 1px solid var(--border); }
+  .status-running { background: rgba(88,166,255,0.12); color: var(--blue); border: 1px solid rgba(88,166,255,0.3); }
+  .status-done { background: rgba(63,185,80,0.12); color: var(--green); border: 1px solid rgba(63,185,80,0.3); }
+
+  .blink { animation: blink 1s step-end infinite; }
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+  /* Paused badge */
+  .paused-badge {
+    display: none;
+    position: absolute;
+    top: 8px;
+    left: 10px;
+    background: rgba(240,136,62,0.9);
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 20px;
+    z-index: 20;
+    animation: pausedPulse 1.4s ease-in-out infinite;
+  }
+
+  .paused-badge.visible { display: block; }
+
+  @keyframes pausedPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  @keyframes donePulse {
+    0% { background: var(--surface2); }
+    50% { background: rgba(63,185,80,0.08); }
+    100% { background: var(--surface2); }
+  }
+
+  .stage.just-done { animation: donePulse 0.5s ease; }
+
+  @keyframes fadeSlideIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .pipeline-section { animation: fadeSlideIn 0.5s ease both; }
+  .pipeline-section:nth-child(2) { animation-delay: 0.15s; }
+
+  .example-question {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    margin-bottom: 16px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+  }
+
+  .rag-label {
+    background: rgba(118,227,234,0.15);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 0.78rem;
+  }
+
+  .full-label {
+    background: rgba(240,136,62,0.15);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 0.78rem;
+  }
+
+  /* Confidentiality Showcase */
+  .confidentiality-showcase {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 28px 32px;
+    margin: 36px 0;
+  }
+
+  .showcase-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .showcase-subtitle {
+    font-size: 0.88rem;
+    color: var(--text-muted);
+    margin-bottom: 28px;
+  }
+
+  .showcase-examples {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  .showcase-example {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .showcase-row {
+    display: grid;
+    grid-template-columns: 1fr 120px 1fr;
+    gap: 0;
+    align-items: center;
+  }
+
+  .showcase-before {
+    background: rgba(248, 81, 73, 0.07);
+    border: 1px solid rgba(248, 81, 73, 0.25);
+    border-radius: 10px 0 0 10px;
+    padding: 16px 18px;
+    position: relative;
+  }
+
+  .showcase-after {
+    background: rgba(63, 185, 80, 0.07);
+    border: 1px solid rgba(63, 185, 80, 0.25);
+    border-radius: 0 10px 10px 0;
+    padding: 16px 18px;
+  }
+
+  .showcase-arrow-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+    gap: 4px;
+    background: rgba(255,255,255,0.02);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    height: 100%;
+    align-self: stretch;
+  }
+
+  .showcase-arrow-icon {
+    font-size: 1.4rem;
+    color: var(--text-muted);
+  }
+
+  .showcase-arrow-label {
+    font-size: 10px;
+    color: var(--text-muted);
+    text-align: center;
+    font-style: italic;
+    line-height: 1.4;
+    max-width: 100px;
+  }
+
+  .showcase-box-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .showcase-before .showcase-box-label {
+    color: #f85149;
+  }
+
+  .showcase-after .showcase-box-label {
+    color: #3fb950;
+  }
+
+  .showcase-text {
+    font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .showcase-before .showcase-text {
+    color: #ffb3b0;
+  }
+
+  .showcase-after .showcase-text {
+    color: #76e0a0;
+  }
+
+  .showcase-confidential-badge {
+    display: inline-block;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #f85149;
+    border: 1px solid rgba(248, 81, 73, 0.4);
+    border-radius: 3px;
+    padding: 1px 5px;
+    margin-left: 4px;
+    opacity: 0.85;
+  }
+
+  .showcase-bf-badge {
+    display: inline-block;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #3fb950;
+    border: 1px solid rgba(63, 185, 80, 0.4);
+    border-radius: 3px;
+    padding: 1px 5px;
+    margin-left: 4px;
+    opacity: 0.85;
+  }
+
+  .showcase-annotation {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-style: italic;
+    padding: 8px 12px 0 12px;
+    line-height: 1.5;
+    text-align: center;
+  }
+
+  .showcase-divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 0;
+  }
+
+  /* BARK Funnel */
+  .funnel-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 28px 32px;
+    margin: 36px 0;
+  }
+
+  .funnel-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .funnel-subtitle {
+    font-size: 0.88rem;
+    color: var(--text-muted);
+    margin-bottom: 28px;
+  }
+
+  .funnel-stages {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+
+  .funnel-stage {
+    width: 100%;
+    max-width: 900px;
+    position: relative;
+  }
+
+  .funnel-stage-inner {
+    border-radius: 10px;
+    padding: 16px 20px;
+    position: relative;
+  }
+
+  .funnel-stage-1 .funnel-stage-inner { background: rgba(248,81,73,0.09); border: 1.5px solid rgba(248,81,73,0.35); max-width: 100%; }
+  .funnel-stage-2 .funnel-stage-inner { background: rgba(227,179,65,0.09); border: 1.5px solid rgba(227,179,65,0.35); max-width: 92%; margin: 0 auto; }
+  .funnel-stage-3 .funnel-stage-inner { background: rgba(88,166,255,0.09); border: 1.5px solid rgba(88,166,255,0.35); max-width: 80%; margin: 0 auto; }
+  .funnel-stage-4 .funnel-stage-inner { background: rgba(63,185,80,0.09); border: 1.5px solid rgba(63,185,80,0.35); max-width: 68%; margin: 0 auto; }
+  .funnel-stage-5 .funnel-stage-inner { background: rgba(57,211,83,0.12); border: 2px solid rgba(57,211,83,0.45); max-width: 56%; margin: 0 auto; }
+
+  .funnel-stage-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .funnel-stage-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .funnel-stage-1 .funnel-stage-label { color: #f85149; }
+  .funnel-stage-2 .funnel-stage-label { color: #e3b341; }
+  .funnel-stage-3 .funnel-stage-label { color: #79c0ff; }
+  .funnel-stage-4 .funnel-stage-label { color: #3fb950; }
+  .funnel-stage-5 .funnel-stage-label { color: #39d353; }
+
+  .funnel-count-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .funnel-stage-1 .funnel-count-badge { background: rgba(248,81,73,0.15); color: #ff7b77; border: 1px solid rgba(248,81,73,0.3); }
+  .funnel-stage-2 .funnel-count-badge { background: rgba(227,179,65,0.15); color: #f0c040; border: 1px solid rgba(227,179,65,0.3); }
+  .funnel-stage-3 .funnel-count-badge { background: rgba(88,166,255,0.15); color: #79c0ff; border: 1px solid rgba(88,166,255,0.3); }
+  .funnel-stage-4 .funnel-count-badge { background: rgba(63,185,80,0.15); color: #56d080; border: 1px solid rgba(63,185,80,0.3); }
+  .funnel-stage-5 .funnel-count-badge { background: rgba(57,211,83,0.2); color: #3dea5a; border: 1px solid rgba(57,211,83,0.4); }
+
+  .funnel-text {
+    font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+    font-size: 12.5px;
+    line-height: 1.65;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .funnel-stage-1 .funnel-text { color: #ffb3b0; }
+  .funnel-stage-2 .funnel-text { color: #f5d07a; }
+  .funnel-stage-3 .funnel-text { color: #a8c8ff; }
+  .funnel-stage-4 .funnel-text { color: #76e0a0; }
+  .funnel-stage-5 .funnel-text { color: #a0f0b0; }
+
+  .funnel-caption {
+    font-size: 11.5px;
+    font-style: italic;
+    margin-top: 7px;
+    opacity: 0.75;
+  }
+
+  .funnel-stage-1 .funnel-caption { color: #f85149; }
+  .funnel-stage-2 .funnel-caption { color: #e3b341; }
+  .funnel-stage-3 .funnel-caption { color: #58a6ff; }
+  .funnel-stage-4 .funnel-caption { color: #3fb950; }
+  .funnel-stage-5 .funnel-caption { color: #39d353; }
+
+  .funnel-note {
+    font-size: 11.5px;
+    color: var(--text-muted);
+    font-style: italic;
+    margin-top: 5px;
+  }
+
+  .funnel-arrow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px 0 4px;
+    gap: 2px;
+    max-width: 700px;
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  .funnel-arrow-line {
+    width: 2px;
+    height: 12px;
+    background: var(--border);
+  }
+
+  .funnel-arrow-icon {
+    font-size: 1.1rem;
+    color: var(--text-muted);
+    line-height: 1;
+  }
+
+  .funnel-arrow-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-style: italic;
+    text-align: center;
+    padding: 2px 16px;
+  }
+
+  @media (max-width: 768px) {
+    .p1-grid { grid-template-columns: 1fr; }
+    .p1-grid .connector { display: none; }
+    .p2-fork { grid-template-columns: 1fr; }
+    header h1 { font-size: 1.6rem; }
+    .dp-row { grid-template-columns: 1fr; }
+    .dp-action { border-top: 1px solid var(--border); padding: 12px 20px; min-width: unset; }
+    .dp-output { border-top: 1px solid var(--border); }
+    .journey-section { padding: 20px 16px; }
+    .dp-input, .dp-output { padding: 14px 16px; }
+    .dp-why { padding: 12px 16px; }
+    .showcase-row { grid-template-columns: 1fr; }
+    .showcase-before { border-radius: 10px 10px 0 0; }
+    .showcase-after { border-radius: 0 0 10px 10px; }
+    .showcase-arrow-col { flex-direction: row; border-top: none; border-left: 1px solid var(--border); border-right: 1px solid var(--border); padding: 8px 16px; height: auto; }
+    .confidentiality-showcase { padding: 20px 16px; }
+    .funnel-stage-2 .funnel-stage-inner,
+    .funnel-stage-3 .funnel-stage-inner,
+    .funnel-stage-4 .funnel-stage-inner,
+    .funnel-stage-5 .funnel-stage-inner { max-width: 100%; }
+    .funnel-section { padding: 20px 16px; }
+  }
+
+  @media (max-width: 600px) {
+    /* Stack the 2-column post-merge grids */
+    #p2-flow [style*="grid-template-columns:1fr 1fr"] { grid-template-columns: 1fr !important; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>BARK / PPBA System Pipelines</h1>
+  <p>Interactive visualization of the Policy Pipeline (offline) and Question Pipeline (real-time)</p>
+</header>
+
+<div class="controls-bar">
+  <span class="speed-label">Speed:</span>
+  <button class="speed-btn" data-speed="0.5" onclick="setSpeed(0.5)">0.5x</button>
+  <button class="speed-btn active" data-speed="1" onclick="setSpeed(1)">1x</button>
+  <button class="speed-btn" data-speed="2" onclick="setSpeed(2)">2x</button>
+</div>
+
+<div class="legend">
+  <span style="font-size:0.9rem;font-weight:600;color:var(--text)">Legend:</span>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--p1-primary)"></div> Policy Pipeline (Offline)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--p2-primary)"></div> Question Pipeline (Real-time)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--purple)"></div> LLM Stage</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--cyan)"></div> RAG Path</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div> Full Policy Path</div>
+  <div class="legend-item" style="gap:4px"><span style="color:var(--green)">&#10003;</span> Stage Complete</div>
+  <div class="legend-item" style="gap:4px"><span style="color:#7cb3ff;font-size:0.8rem">&#9632;</span> Input &nbsp; <span style="color:#56d080;font-size:0.8rem">&#9632;</span> Output (shown during animation)</div>
+</div>
+
+<!-- ======================== PIPELINE 1 ======================== -->
+<div class="pipeline-section" id="p1-section">
+  <div class="pipeline-header">
+    <div class="pipeline-title">
+      <span class="pipeline-badge badge-offline">Offline / Batch</span>
+      <h2>Pipeline 1: Policy Pipeline</h2>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span class="status-chip status-idle" id="p1-status">&#9679; Idle</span>
+      <button class="run-btn run-btn-p1" id="p1-run-btn" onclick="runPipeline1()">&#9654; Run Pipeline</button>
+    </div>
+  </div>
+
+  <div class="pipeline-canvas" id="p1-canvas">
+    <div class="paused-badge" id="p1-paused-badge">&#9646;&#9646; Paused — click stage to resume</div>
+    <div class="progress-bar-wrap"><div class="progress-bar progress-p1" id="p1-progress"></div></div>
+
+    <div class="p1-grid" id="p1-grid">
+
+      <div class="stage-wrapper" id="p1-s1-wrap">
+        <div class="stage" id="p1-s1" style="--stage-color: #58a6ff" data-modal="p1-s1">
+          <div class="stage-check" id="p1-s1-check">&#10003;</div>
+          <div class="stage-number">1</div>
+          <div class="stage-name">Scanner</div>
+          <div class="stage-desc">Ingests raw documents (DOCX, XLSX, PDF) and splits into text chunks with metadata</div>
+          <div class="stage-output">&#8594; 25,006 raw text chunks</div>
+        </div>
+        <div class="data-panel" id="p1-s1-panel">
+          <div class="dp-row">
+            <div class="dp-input"><div class="dp-label">Input</div><div class="dp-text">Midot InfoSec Policy v16.docx (42 pages)
+Pentest Report 2025-Q4.pdf
+IT Controls Matrix.xlsx</div></div>
+            <div class="dp-action"><div class="dp-label">Does</div><div class="dp-arrow">&#8594;</div><div class="dp-action-text">Extracts raw text chunks from documents</div></div>
+            <div class="dp-output"><div class="dp-label">Output</div><div class="dp-text">25,006 raw text segments
+{ text, doc_id, page, source_path, chunk_index }</div></div>
+          </div>
+          <div class="dp-why"><div class="dp-why-label">Why</div>Without structured extraction, policy documents are just opaque files. The scanner makes them machine-readable.</div>
+        </div>
+      </div>
+
+      <div class="connector"><div class="connector-arrow">&#8594;</div></div>
+
+      <div class="stage-wrapper" id="p1-s2-wrap">
+        <div class="stage" id="p1-s2" style="--stage-color: #79c0ff" data-modal="p1-s2">
+          <div class="stage-check" id="p1-s2-check">&#10003;</div>
+          <div class="stage-number">2</div>
+          <div class="stage-name">Index Builder</div>
+          <div class="stage-desc">Assigns metadata, document IDs, domains, section headers per chunk</div>
+          <div class="stage-output">&#8594; Structured index with metadata</div>
+        </div>
+        <div class="data-panel" id="p1-s2-panel">
+          <div class="dp-row">
+            <div class="dp-input"><div class="dp-label">Input</div><div class="dp-text">25,006 text segments
+with source metadata</div></div>
+            <div class="dp-action"><div class="dp-label">Does</div><div class="dp-arrow">&#8594;</div><div class="dp-action-text">Structures chunks with metadata (source, page, section)</div></div>
+            <div class="dp-output"><div class="dp-label">Output</div><div class="dp-text">Indexed chunks:
+{ chunk_id, doc_id, domain_tags[], section_header, page_num }</div></div>
+          </div>
+          <div class="dp-why"><div class="dp-why-label">Why</div>Metadata links every chunk back to its source document and page — essential for evidence tracing later.</div>
+        </div>
+      </div>
+
+      <div class="connector"><div class="connector-arrow">&#8594;</div></div>
+
+      <div class="stage-wrapper" id="p1-s3-wrap">
+        <div class="stage" id="p1-s3" style="--stage-color: #bc8cff" data-modal="p1-s3">
+          <div class="stage-check" id="p1-s3-check">&#10003;</div>
+          <div class="stage-number">3</div>
+          <div class="stage-name">Abstractor</div>
+          <div class="stage-model">Ollama qwen2.5:32b (AWS Spot GPU)</div>
+          <div class="stage-desc">LLM extracts 1-5 atomic behavioral facts per chunk</div>
+          <div class="stage-output">&#8594; 25,006 Behavioral Facts (BFs)</div>
+        </div>
+        <div class="data-panel" id="p1-s3-panel">
+          <div class="dp-row">
+            <div class="dp-input"><div class="dp-label">Input (real example — questionnaire response)</div><div class="dp-text">"What cryptographic frameworks are used to secure a) data in transit over public networks, b) passwords, c) data at rest? | TLS for in transit; AES for in storage; AWS KMS as a key management service"</div></div>
+            <div class="dp-action"><div class="dp-label">Does</div><div class="dp-arrow">&#8594;</div><div class="dp-action-text">Strips questionnaire structure, de-identifies — preserves full behavioral detail</div></div>
+            <div class="dp-output"><div class="dp-label">Output BF (de-identified, still detailed)</div><div class="dp-text">"There is a mechanism to reinforce the segregation of roles between key management and other roles via AWS KMS."</div></div>
+          </div>
+          <div class="dp-why"><div class="dp-why-label">Why</div>The output is NOT a one-liner summary — it preserves the full behavioral detail. Only org-specific identifiers (portal URLs, account IDs, internal system names) are stripped. The resulting BF is still 2 sentences of precise policy language, just de-identified and atomic.</div>
+        </div>
+      </div>
+
+      <div class="v-connector-group">
+        <div class="v-conn"><div class="v-conn-line"></div><span>&#8595;</span></div>
+        <div class="v-conn"></div>
+        <div class="v-conn"><div class="v-conn-line"></div><span>&#8595;</span></div>
+      </div>
+
+      <div class="stage-wrapper" id="p1-s4-wrap">
+        <div class="stage" id="p1-s4" style="--stage-color: #d2a8ff" data-modal="p1-s4">
+          <div class="stage-check" id="p1-s4-check">&#10003;</div>
+          <div class="stage-number">4</div>
+          <div class="stage-name">Classify Facts</div>
+          <div class="stage-desc">Heuristic classifier assigns POLICY / CONTROL / FINDING / RECOMMENDATION / TEST_SCENARIO</div>
+          <div class="stage-output">&#8594; POLICY: 12K | FINDING: 8K | CONTROL: 3K | REC: 1.5K | TEST: 500</div>
+        </div>
+        <div class="data-panel" id="p1-s4-panel">
+          <div class="dp-row">
+            <div class="dp-input"><div class="dp-label">Input (real examples)</div><div class="dp-text">POLICY: "Passwords must be securely stored to prevent theft by unauthorized individuals."
+FINDING: "Device updates such as security patches are not enforced."
+RECOMMENDATION: "Implement a secure software development cycle, leveraging OWASP CLASP."</div></div>
+            <div class="dp-action"><div class="dp-label">Does</div><div class="dp-arrow">&#8594;</div><div class="dp-action-text">Labels each BF by type using heuristic rules</div></div>
+            <div class="dp-output"><div class="dp-label">Output</div><div class="dp-text">POLICY:   12,000
+FINDING:   8,000
+CONTROL:   3,000
+RECOMMENDATION: 1,500
+TEST_SCENARIO:    500</div></div>
+          </div>
+          <div class="dp-why"><div class="dp-why-label">Why</div>Not all facts are equal. A FINDING ("device patches not enforced") needs different treatment than a POLICY ("passwords must be securely stored"). Classification enables smart filtering and prioritization.</div>
+        </div>
+      </div>
+
+      <div class="connector"><div class="connector-arrow">&#8594;</div></div>
+
+      <div class="stage-wrapper" id="p1-s5-wrap">
+        <div class="stage" id="p1-s5" style="--stage-color: #f0883e" data-modal="p1-s5">
+          <div class="stage-check" id="p1-s5-check">&#10003;</div>
+          <div class="stage-number">5</div>
+          <div class="stage-name">Detect Stale Findings</div>
+          <div class="stage-desc">Fuzzy-match FINDING BFs across audit cycles (difflib >= 0.70 similarity)</div>
+          <div class="stage-output">&#8594; Unrepeated findings marked HISTORICAL</div>
+        </div>
+        <div class="data-panel" id="p1-s5-panel">
+          <div class="dp-row">
+            <div class="dp-input"><div class="dp-label">Input</div><div class="dp-text">8,000 FINDING BFs
+across 2 audit cycles
+(2024-Q1 and 2025-Q1)</div></div>
+            <div class="dp-action"><div class="dp-label">Does</div><div class="dp-arrow">&#8594;</div><div class="dp-action-text">Marks findings not repeated in latest audit as HISTORICAL</div></div>
+            <div class="dp-output"><div class="dp-label">Output</div><div class="dp-text">1,200 marked HISTORICAL
+(fuzzy match ≥ 0.70)
+6,800 remain CURRENT</div></div>
+          </div>
+          <div class="dp-why"><div class="dp-why-label">Why</div>Audit findings from 2 years ago that weren't repeated in the latest audit are likely resolved. Marking them HISTORICAL prevents outdated findings from polluting current gap analysis.</div>
+        </div>
+      </div>
+
+      <div class="connector"><div class="connector-arrow">&#8594;</div></div>
+
+      <div class="stage-wrapper" id="p1-s6-wrap">
+        <div class="stage" id="p1-s6" style="--stage-color: #e05d44" data-modal="p1-s6">
+          <div class="stage-check" id="p1-s6-check">&#10003;</div>
+          <div class="stage-number">6</div>
+          <div class="stage-name">Quality Guard</div>
+          <div class="stage-desc">Scans and fixes contaminated vendors, stale ISO refs, false compliance claims, and tool contamination</div>
+          <div class="stage-output">&#8594; Fatal gate — halts pipeline on failure</div>
+        </div>
+        <div class="data-panel" id="p1-s6-panel">
+          <div class="dp-row">
+            <div class="dp-input"><div class="dp-label">Input</div><div class="dp-text">25,006 BFs in SQLite
+verified_vendors.json config
+tools-catalog.json</div></div>
+            <div class="dp-action"><div class="dp-label">Does</div><div class="dp-arrow">&#8594;</div><div class="dp-action-text">4 scans: vendor contamination, stale refs, false claims, tool contamination. Fixes in-place.</div></div>
+            <div class="dp-output"><div class="dp-label">Output</div><div class="dp-text">Drata → [redacted vendor]
+ISO 27001:2013 → 2022
+False SOC2/HITRUST claims stripped
+878 tool-contaminated BFs → HISTORICAL</div></div>
+          </div>
+          <div class="dp-why"><div class="dp-why-label">Why</div>Client audit documents (Cat B/C) leak their tools into Midot's behavioral facts. Tool contamination detection uses source categories from document indexing — tools with only B/C sources are tagged HISTORICAL, tools with Cat A sources are kept. Deprecated tools (Trellix, McAfee) are always tagged. No manual ownership flags — ownership is derived automatically from the data. Also catches vendor contamination, stale ISO refs, and false compliance claims. Fatal gate — bad data in = bad answers out.</div>
+        </div>
+      </div>
+
+      <div class="connector"><div class="connector-arrow">&#8594;</div></div>
+
+      <div class="stage-wrapper" id="p1-s7-wrap">
+        <div class="stage" id="p1-s7" style="--stage-color: #39d353" data-modal="p1-s7">
+          <div class="stage-check" id="p1-s7-check">&#10003;</div>
+          <div class="stage-number">7</div>
+          <div class="stage-name">Populate Embeddings</div>
+          <div class="stage-model">text-embedding-3-small (Azure, 512 dims)</div>
+          <div class="stage-desc">Generates embedding vectors for all BFs (raw text, no contextual prefix)</div>
+          <div class="stage-output">&#8594; 25,006 x 512-dim float32 vectors</div>
+        </div>
+        <div class="data-panel" id="p1-s7-panel">
+          <div class="dp-row">
+            <div class="dp-input"><div class="dp-label">Input</div><div class="dp-text">25,006 BF texts
+(raw, no prefix)</div></div>
+            <div class="dp-action"><div class="dp-label">Does</div><div class="dp-arrow">&#8594;</div><div class="dp-action-text">Converts each fact to a 512-dimensional vector</div></div>
+            <div class="dp-output"><div class="dp-label">Output</div><div class="dp-text">25,006 × 512-dim
+float32 vectors in SQLite
+~52MB | Cost: ~$0.015</div></div>
+          </div>
+          <div class="dp-why"><div class="dp-why-label">Why</div>Keywords miss semantic similarity — "access control" ≠ "authentication management" to a keyword engine. Vector embeddings find semantically similar facts even when the words differ.</div>
+        </div>
+      </div>
+
+      <div class="v-connector-group">
+        <div class="v-conn"><div class="v-conn-line"></div><span>&#8595;</span></div>
+        <div class="v-conn"></div>
+        <div class="v-conn"></div>
+      </div>
+
+      <div class="stage-wrapper" id="p1-s8-wrap">
+        <div class="stage" id="p1-s8" style="--stage-color: #76e3ea" data-modal="p1-s8">
+          <div class="stage-check" id="p1-s8-check">&#10003;</div>
+          <div class="stage-number">8</div>
+          <div class="stage-name">Populate Entities</div>
+          <div class="stage-desc">Static regex + ABSTRACT_MAP extracts named entities from BFs for HippoRAG-style overlap scoring</div>
+          <div class="stage-output">&#8594; 1,068 entity rows, 55 unique entities</div>
+        </div>
+        <div class="data-panel" id="p1-s8-panel">
+          <div class="dp-row">
+            <div class="dp-input"><div class="dp-label">Input</div><div class="dp-text">25,006 BFs
+"MFA is required for all
+privileged access and
+remote users"</div></div>
+            <div class="dp-action"><div class="dp-label">Does</div><div class="dp-arrow">&#8594;</div><div class="dp-action-text">Extracts named entities (systems, standards, tools)</div></div>
+            <div class="dp-output"><div class="dp-label">Output</div><div class="dp-text">1,068 entity rows
+55 unique entities:
+"AWS IAM", "Azure AD",
+"MFA", "NIST 800-53"</div></div>
+          </div>
+          <div class="dp-why"><div class="dp-why-label">Why</div>When a user asks about "AWS IAM", we can instantly find all facts mentioning "AWS IAM" — faster and more precise than keyword or semantic search alone.</div>
+        </div>
+      </div>
+
+      <div class="connector"><div class="connector-arrow">&#8594;</div></div>
+
+      <div class="stage-wrapper" id="p1-s9-wrap">
+        <div class="stage" id="p1-s9" style="--stage-color: #f778ba" data-modal="p1-s9">
+          <div class="stage-check" id="p1-s9-check">&#10003;</div>
+          <div class="stage-number">9</div>
+          <div class="stage-name">Derive v4</div>
+          <div class="stage-model">GPT-4.1 (Azure DataZoneStandard)</div>
+          <div class="stage-desc">Synthesizes BFs per domain into structured policy statements. Separates Requirements vs Observations.</div>
+          <div class="stage-output">&#8594; balanced-policies-v16.md | 1,127 statements, 23 domains</div>
+        </div>
+        <div class="data-panel" id="p1-s9-panel">
+          <div class="dp-row">
+            <div class="dp-input"><div class="dp-label">Input (5 MFA facts)</div><div class="dp-text">[POLICY] "MFA is required for all privileged access"
+[POLICY] "MFA required for remote connections"
+[CONTROL] "RBAC enforced via Active Directory"
+[FINDING] "Legacy admin portal lacks MFA"
+[RECOMMENDATION] "Implement FIDO2 tokens"</div></div>
+            <div class="dp-action"><div class="dp-label">Does</div><div class="dp-arrow">&#8594;</div><div class="dp-action-text">Synthesizes balanced policy statements per domain</div></div>
+            <div class="dp-output"><div class="dp-label">Output statement</div><div class="dp-text">"MFA and RBAC are implemented for access control; MFA is required for all privileged accounts and supported for all customer users."</div></div>
+          </div>
+          <div class="dp-why"><div class="dp-why-label">Why</div>25,006 individual facts are too many for an LLM to process. Derive synthesizes them into 1,127 balanced policy statements — a compressed, comprehensive policy document.</div>
+        </div>
+      </div>
+
+      <div class="connector"><div class="connector-arrow">&#8594;</div></div>
+
+      <div class="stage-wrapper" id="p1-s10-wrap">
+        <div class="stage" id="p1-s10" style="--stage-color: #e3b341" data-modal="p1-s10">
+          <div class="stage-check" id="p1-s10-check">&#10003;</div>
+          <div class="stage-number">10</div>
+          <div class="stage-name">Generate Domain Summaries</div>
+          <div class="stage-model">GPT-4.1 (Azure DataZoneStandard)</div>
+          <div class="stage-desc">Generates concise Tier 2 summaries for each of 23 security domains. Uploaded to Azure Blob.</div>
+          <div class="stage-output">&#8594; 23 domain summaries (1.5MB JSON) &#8594; Azure Blob</div>
+        </div>
+        <div class="data-panel" id="p1-s10-panel">
+          <div class="dp-row">
+            <div class="dp-input"><div class="dp-label">Input</div><div class="dp-text">BFs + v4 statements
+per domain (all 23)</div></div>
+            <div class="dp-action"><div class="dp-label">Does</div><div class="dp-arrow">&#8594;</div><div class="dp-action-text">Generates executive summary + OSCAL coverage per domain</div></div>
+            <div class="dp-output"><div class="dp-label">Output</div><div class="dp-text">23 domain summaries
+with gap highlights
+→ Azure Blob (1.5MB)</div></div>
+          </div>
+          <div class="dp-why"><div class="dp-why-label">Why</div>For reasoning questions, the LLM needs a high-level overview before diving into specifics. Domain summaries provide the "forest" view so the LLM doesn't get lost in the "trees".</div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="final-output">
+      <div class="final-output-icon">&#128190;</div>
+      <div class="final-output-text">
+        <strong>Final Output: ppba-v2.db (187MB) &#8594; Azure Blob Storage</strong>
+        Contains: 25,006 BFs with embeddings + entities, FTS5 full-text index, domain summaries.
+        Auto-downloaded to /tmp/ by ppba-api at cold start.
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Shared data panel for Pipeline 1 — updated dynamically during animation -->
+  <div class="shared-data-panel" id="p1-shared-panel"></div>
+</div>
+
+<hr class="divider">
+
+<!-- ======================== BARK FUNNEL ======================== -->
+<div class="funnel-section">
+  <div class="funnel-title">
+    <span>&#11835;</span>
+    <span>From 30K Chunks to One Answer: The BARK Funnel</span>
+  </div>
+  <div class="funnel-subtitle">Two examples flowing through the first stages — see how raw documents from different clients become de-identified behavioral facts</div>
+
+  <div class="funnel-stages">
+
+    <!-- Stage 1: Raw Document -->
+    <div class="funnel-stage funnel-stage-1">
+      <div class="funnel-stage-inner">
+        <div class="funnel-stage-header">
+          <div class="funnel-stage-label">&#128196; Stage 1 — Raw Document</div>
+          <span class="funnel-count-badge">30,000 chunks</span>
+        </div>
+        <div class="funnel-text">"What cryptographic frameworks are used to secure a) data in transit over public networks, b) passwords, c) data at rest? | TLS for in transit; AES for in storage; AWS KMS as a key management service"</div>
+        <div class="funnel-caption">&#128196; Raw chunk from questionnaire response</div>
+        <div style="border-top:1px solid rgba(255,255,255,0.12);margin:14px 0 10px 0"></div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;font-style:italic">Another example:</div>
+        <div class="funnel-text">"Mercedes-BenzTechInnovation — 5 Application-related Vulnerabilities — 15 Used Accounts, Unauthenticated. Recommendation: When creating user influenced output, special characters like &quot;, &lt;, &gt;, &amp; and &#39; have to be escaped according to the context in which they are used (e.g. HTML, JavaScript, CSS)."</div>
+        <div class="funnel-caption">&#128196; Raw chunk from client penetration test report</div>
+        <div style="border-top:1px solid rgba(255,255,255,0.12);margin:14px 0 10px 0"></div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;font-style:italic">Another example:</div>
+        <div class="funnel-text">"The audits will be performed by Midot Deputy CEO in person or by someone else on his behalf, but not by Midot's IT manager or CISO. The complete audit report will be sent by e-mail to Midot CEO and to the IT manager and CISO."</div>
+        <div class="funnel-caption">&#128196; Raw chunk from audit report</div>
+      </div>
+    </div>
+
+    <div class="funnel-arrow">
+      <div class="funnel-arrow-line"></div>
+      <div class="funnel-arrow-icon">&#8595;</div>
+      <div class="funnel-arrow-label">Abstractor: de-identifies, makes atomic (&times;25,006)</div>
+    </div>
+
+    <!-- Stage 2: Behavioral Fact -->
+    <div class="funnel-stage funnel-stage-2">
+      <div class="funnel-stage-inner">
+        <div class="funnel-stage-header">
+          <div class="funnel-stage-label">&#129504; Stage 2 — Behavioral Fact</div>
+          <span class="funnel-count-badge">25,006 BFs</span>
+        </div>
+        <div class="funnel-text">"There is a mechanism to reinforce the segregation of roles between key management and other roles via AWS KMS."</div>
+        <div class="funnel-caption">&#129504; BF #10,159 — [CONTROL] [Cryptography &amp; Encryption]</div>
+        <div class="funnel-note">Specific questionnaire structure stripped. Cryptographic control behavior preserved.</div>
+        <div style="border-top:1px solid rgba(255,255,255,0.12);margin:14px 0 10px 0"></div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;font-style:italic">Another example:</div>
+        <div class="funnel-text">"Automated scanning tools were used for host identification, service discovery, and enumeration during the external application penetration testing."</div>
+        <div class="funnel-caption">&#129504; BF #12,456 — [CONTROL] [Application Security]</div>
+        <div class="funnel-note">Client name 'Mercedes-Benz', vulnerability counts, account details stripped. Testing methodology preserved.</div>
+        <div style="border-top:1px solid rgba(255,255,255,0.12);margin:14px 0 10px 0"></div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;font-style:italic">Another example:</div>
+        <div class="funnel-text">"Periodic reviews are conducted to revalidate that all system access is authorized and has a legitimate business need."</div>
+        <div class="funnel-caption">&#129504; BF #2,480 — [CONTROL] [Governance &amp; Security Policy]</div>
+        <div class="funnel-note">Midot executive names and roles stripped. Audit governance behavior preserved.</div>
+      </div>
+    </div>
+
+    <div class="funnel-arrow">
+      <div class="funnel-arrow-line"></div>
+      <div class="funnel-arrow-icon">&#8595;</div>
+      <div class="funnel-arrow-label">Derive v4: synthesizes across 12 related BFs into one statement</div>
+    </div>
+
+    <!-- Stage 3: Derived Statement -->
+    <div class="funnel-stage funnel-stage-3">
+      <div class="funnel-stage-inner">
+        <div class="funnel-stage-header">
+          <div class="funnel-stage-label">&#128221; Stage 3 — Derived Statement</div>
+          <span class="funnel-count-badge">1,127 statements</span>
+        </div>
+        <div class="funnel-text">"Multi-factor authentication (MFA) and role-based access control (RBAC) are implemented for access control; MFA is required for all privileged accounts and supported for all customer users. Generic and service accounts are re-certified annually and require formal approval processes for creation, modification, or deletion."</div>
+        <div class="funnel-caption">&#128221; Statement #847 in balanced-policies-v16.md</div>
+        <div class="funnel-note">12 BFs about access control merged into one comprehensive statement</div>
+      </div>
+    </div>
+
+    <div class="funnel-arrow">
+      <div class="funnel-arrow-line"></div>
+      <div class="funnel-arrow-icon">&#8595;</div>
+      <div class="funnel-arrow-label">User asks: "What gaps exist in our access control for ISO 27001?"</div>
+    </div>
+    <div class="funnel-arrow" style="padding-top:0">
+      <div class="funnel-arrow-label" style="padding-top:0">Retrieval: finds 30 most relevant facts from 25K BFs</div>
+      <div class="funnel-arrow-icon">&#8595;</div>
+    </div>
+
+    <!-- Stage 4: Retrieved Context -->
+    <div class="funnel-stage funnel-stage-4">
+      <div class="funnel-stage-inner">
+        <div class="funnel-stage-header">
+          <div class="funnel-stage-label">&#127919; Stage 4 — Retrieved Context</div>
+          <span class="funnel-count-badge">~30 facts, ~3K tokens</span>
+        </div>
+        <div class="funnel-text">### Access Control &amp; Identity
+(ISO 27001: A.5.15 Access control, A.5.16 Identity management, A.8.5 Secure authentication)
+Findings:
+- [FINDING] Generic accounts on legacy portal lack annual re-certification
+- [FINDING] MFA not enforced on legacy admin interface
+Requirements:
+- [POLICY] Generic accounts must be re-certified annually
+- [POLICY] MFA required for all privileged access
+- [CONTROL] RBAC implemented with quarterly access reviews</div>
+        <div class="funnel-caption">&#127919; 30 relevant facts from 25K — focused on the question</div>
+      </div>
+    </div>
+
+    <div class="funnel-arrow">
+      <div class="funnel-arrow-line"></div>
+      <div class="funnel-arrow-icon">&#8595;</div>
+      <div class="funnel-arrow-label">GPT-4.1 synthesizes answer</div>
+    </div>
+
+    <!-- Stage 5: Answer -->
+    <div class="funnel-stage funnel-stage-5">
+      <div class="funnel-stage-inner">
+        <div class="funnel-stage-header">
+          <div class="funnel-stage-label">&#128172; Stage 5 — Answer</div>
+          <span class="funnel-count-badge">1 answer</span>
+        </div>
+        <div class="funnel-text">Gap Analysis — Access Control for ISO 27001:
+&#10003; MFA enforced for privileged accounts (A.8.5)
+&#10003; RBAC with quarterly reviews (A.5.15)
+&#9888; Gap: Legacy admin portal lacks MFA enforcement
+&#9888; Gap: Generic account re-certification overdue on 2 systems
+&#128203; Recommendation: Extend MFA to all admin interfaces, automate re-certification tracking</div>
+        <div class="funnel-caption">&#128172; Structured answer with evidence-backed gaps</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ======================== TRANSFORMATION JOURNEY ======================== -->
+<div class="journey-section">
+  <div class="journey-title">
+    <span>Transformation Journey</span>
+    <span style="font-size:0.85rem;font-weight:400;color:var(--text-muted)">— One fact's complete lifecycle through the system</span>
+  </div>
+  <div class="journey-subtitle">From raw policy text to searchable, comparable, synthesized knowledge</div>
+  <div class="journey-steps">
+
+    <div class="journey-step">
+      <div class="journey-icon-wrap" style="background:rgba(88,166,255,0.12);border:1px solid rgba(88,166,255,0.25)">&#128196;</div>
+      <div class="journey-content">
+        <div class="journey-step-label" style="color:var(--p1-primary)">Source Document</div>
+        <div class="journey-step-text" style="background:rgba(56,100,160,0.12);border:1px solid rgba(56,100,160,0.25);color:#a8c8ff">Midot Security Operations Policy v1.1</div>
+      </div>
+    </div>
+
+    <div class="journey-step">
+      <div class="journey-icon-wrap" style="background:rgba(88,166,255,0.12);border:1px solid rgba(88,166,255,0.25)">&#128269;</div>
+      <div class="journey-content">
+        <div class="journey-step-label" style="color:var(--p1-primary)">Stage 1 — Scanner extracts raw chunk</div>
+        <div class="journey-step-text" style="background:rgba(56,100,160,0.12);border:1px solid rgba(56,100,160,0.25);color:#a8c8ff">"RBAC &amp; MFA; WAF &amp; ZTNA; encryption; secure SDLC (SAST/DAST/SCA); backup &amp; recovery; logging &amp; SIEM; VM &amp; patching; IR; TPRM; governed by change management."</div>
+      </div>
+    </div>
+
+    <div class="journey-step">
+      <div class="journey-icon-wrap" style="background:rgba(188,140,255,0.12);border:1px solid rgba(188,140,255,0.25)">&#129504;</div>
+      <div class="journey-content">
+        <div class="journey-step-label" style="color:var(--purple)">Stage 3 — Abstractor distills to atomic BF</div>
+        <div class="journey-step-text" style="background:rgba(188,140,255,0.1);border:1px solid rgba(188,140,255,0.2);color:#d2a8ff">"MFA and RBAC are implemented for access control."</div>
+        <div style="margin-top:6px;font-size:12px;color:var(--text-muted);font-style:italic">Verbose 22-word acronym soup → clean, atomic, 8-word behavioral fact</div>
+      </div>
+    </div>
+
+    <div class="journey-step">
+      <div class="journey-icon-wrap" style="background:rgba(210,168,255,0.1);border:1px solid rgba(210,168,255,0.2)">&#127991;</div>
+      <div class="journey-content">
+        <div class="journey-step-label" style="color:#d2a8ff">Stage 4 — Classifier labels the fact</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
+          <span class="journey-tag" style="background:rgba(88,166,255,0.15);border:1px solid rgba(88,166,255,0.25);color:var(--blue)">CONTROL</span>
+          <span class="journey-tag" style="background:rgba(63,185,80,0.12);border:1px solid rgba(63,185,80,0.2);color:var(--green)">Governance &amp; Security Policy</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="journey-step">
+      <div class="journey-icon-wrap" style="background:rgba(57,211,83,0.1);border:1px solid rgba(57,211,83,0.2)">&#128202;</div>
+      <div class="journey-content">
+        <div class="journey-step-label" style="color:var(--green)">Stage 6 — Embedder vectorizes</div>
+        <div class="journey-step-text" style="background:rgba(40,100,60,0.12);border:1px solid rgba(40,100,60,0.25);color:#76e0a0">[0.023, -0.156, 0.891, 0.044, -0.312, ...] &nbsp;(512 dimensions)</div>
+        <div style="margin-top:6px;font-size:12px;color:var(--text-muted);font-style:italic">Now semantically comparable to any query — even if the words are different</div>
+      </div>
+    </div>
+
+    <div class="journey-step">
+      <div class="journey-icon-wrap" style="background:rgba(118,227,234,0.1);border:1px solid rgba(118,227,234,0.2)">&#128279;</div>
+      <div class="journey-content">
+        <div class="journey-step-label" style="color:var(--cyan)">Stage 7 — Entity extractor finds named entities</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
+          <span class="journey-tag" style="background:rgba(118,227,234,0.12);border:1px solid rgba(118,227,234,0.2);color:var(--cyan)">MFA</span>
+          <span class="journey-tag" style="background:rgba(118,227,234,0.12);border:1px solid rgba(118,227,234,0.2);color:var(--cyan)">RBAC</span>
+        </div>
+        <div style="margin-top:6px;font-size:12px;color:var(--text-muted);font-style:italic">Enables instant lookup when users ask about specific systems or standards</div>
+      </div>
+    </div>
+
+    <div class="journey-step">
+      <div class="journey-icon-wrap" style="background:rgba(247,120,186,0.1);border:1px solid rgba(247,120,186,0.2)">&#128221;</div>
+      <div class="journey-content">
+        <div class="journey-step-label" style="color:var(--pink)">Stage 8 — Derive v4 synthesizes with 4 other MFA facts</div>
+        <div class="journey-step-text" style="background:rgba(247,120,186,0.08);border:1px solid rgba(247,120,186,0.18);color:#f9b8d8">"Multi-factor authentication (MFA) and role-based access control (RBAC) are implemented for access control; MFA is required for all privileged accounts and supported for all customer users."</div>
+        <div style="margin-top:6px;font-size:12px;color:var(--text-muted);font-style:italic">5 BFs merged into 1 comprehensive, authoritative policy statement</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ======================== PIPELINE 2 ======================== -->
+<div class="pipeline-section" id="p2-section">
+  <div class="pipeline-header">
+    <div class="pipeline-title">
+      <span class="pipeline-badge badge-realtime">Real-time</span>
+      <h2>Pipeline 2: Question Pipeline</h2>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span class="status-chip status-idle" id="p2-status">&#9679; Idle</span>
+      <button class="run-btn run-btn-p2" id="p2-run-btn" onclick="runPipeline2()">&#9654; Run Pipeline</button>
+    </div>
+  </div>
+
+  <div class="example-question">
+    <span style="color:var(--text-muted)">Example question: </span>
+    <span style="color:var(--cyan);font-style:italic">"What gaps exist in our MFA implementation for ISO 27001?"</span>
+  </div>
+
+  <div class="pipeline-canvas" id="p2-canvas">
+    <div class="paused-badge" id="p2-paused-badge">&#9646;&#9646; Paused — click stage to resume</div>
+    <div class="progress-bar-wrap"><div class="progress-bar progress-p2" id="p2-progress"></div></div>
+
+    <div class="pipeline-flow" id="p2-flow">
+
+      <div class="flow-row">
+        <div class="stage-wrapper" id="p2-s1-wrap" style="flex:1">
+          <div class="stage" id="p2-s1" style="--stage-color: #3fb950" data-modal="p2-s1">
+            <div class="stage-check" id="p2-s1-check">&#10003;</div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div class="stage-number">1</div>
+              <div>
+                <div class="stage-name">Classify Question</div>
+                <div class="stage-desc">Keyword LUT (&lt;1ms) detects reasoning vs factual + relevant domains. LLM fallback only if ambiguous.</div>
+              </div>
+            </div>
+            <div class="stage-output">&#8594; is_reasoning=True, domains=['Access Control &amp; Identity'], framework='iso27001'</div>
+          </div>
+          <div class="data-panel" id="p2-s1-panel">
+            <div class="dp-row">
+              <div class="dp-input"><div class="dp-label">Input</div><div class="dp-text">"What gaps exist in our MFA implementation for ISO 27001?"</div></div>
+              <div class="dp-action"><div class="dp-label">Does</div><div class="dp-arrow">&#8594;</div><div class="dp-action-text">Detects reasoning vs factual, classifies security domains</div></div>
+              <div class="dp-output"><div class="dp-label">Output</div><div class="dp-text">is_reasoning = True
+domains = ['Access Control & Identity']
+framework = 'iso27001'
+method = 'lut_keyword'</div></div>
+            </div>
+            <div class="dp-why"><div class="dp-why-label">Why</div>Different questions need different strategies. "What is our MFA policy?" needs breadth (full policy). "What gaps exist in MFA for ISO 27001?" needs depth (targeted retrieval). Wrong routing = wrong answer quality.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="routing-box" id="p2-routing" data-modal="p2-routing">
+        <div class="routing-diamond">
+          <div class="routing-diamond-inner">?</div>
+        </div>
+        <div class="routing-paths">
+          <div style="font-size:0.92rem;font-weight:700;color:var(--text);margin-bottom:4px">Hybrid Routing Decision</div>
+          <div class="routing-path">
+            <span class="routing-path-arrow">&#8627;</span>
+            <span class="path-rag">Reasoning question &#8594; RAG path</span>
+            <span style="color:var(--text-muted);font-size:0.78rem;margin-left:6px">(3-5K tokens)</span>
+          </div>
+          <div class="routing-path">
+            <span class="routing-path-arrow">&#8627;</span>
+            <span class="path-full">Factual question &#8594; Full Policy path</span>
+            <span style="color:var(--text-muted);font-size:0.78rem;margin-left:6px">(37K tokens)</span>
+          </div>
+        </div>
+        <div style="font-size:11px;color:#c89a30;font-style:italic;margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,200,80,0.15)"><span style="font-weight:700;font-style:normal;text-transform:uppercase;letter-spacing:0.07em;font-size:10px;">Why: </span>Full policy gives comprehensive but expensive answers (37K tokens). RAG gives focused, cheaper answers (3-5K tokens). Routing optimizes quality AND cost.</div>
+      </div>
+      <div class="data-panel" id="p2-routing-panel">
+        <div class="dp-row">
+          <div class="dp-input"><div class="dp-label">Input</div><div class="dp-text">is_reasoning=True + PPBA_ENABLE_RAG=true
+→ RAG path selected
+
+is_reasoning=False + PPBA_ENABLE_RAG=true
+→ Full Policy path selected</div></div>
+          <div class="dp-action"><div class="dp-label">Does</div><div class="dp-arrow">&#8594;</div><div class="dp-action-text">Routes question to RAG or full policy based on question type</div></div>
+          <div class="dp-output"><div class="dp-label">Output</div><div class="dp-text">rag_mode: "rag" or "full_policy"
+
+Result: v16_rag eval = 4.49
+(target ≥4.3 achieved)
+Factual: 3.44 → 4.64 (+1.20)</div></div>
+        </div>
+        <div class="dp-why"><div class="dp-why-label">Why</div>Full policy gives comprehensive but expensive answers (37K tokens). RAG gives focused, cheaper answers (3-5K tokens). Routing optimizes quality AND cost — factual questions need full context, reasoning questions benefit from targeted retrieval.</div>
+      </div>
+
+      <div class="p2-fork" id="p2-fork">
+
+        <div class="fork-path fork-path-rag" id="p2-fork-rag">
+          <div class="fork-path-title">
+            <span class="rag-label" style="color:var(--cyan)">RAG</span>
+            Reasoning Path
+          </div>
+          <div class="fork-stages">
+            <div class="stage-wrapper" id="p2-s2a-wrap">
+              <div class="stage" id="p2-s2a" style="--stage-color: #76e3ea" data-modal="p2-s2a">
+                <div class="stage-check" id="p2-s2a-check">&#10003;</div>
+                <div class="stage-number">2a</div>
+                <div class="stage-name">FTS5 Search</div>
+                <div class="stage-desc">BM25 full-text keyword search on BF content with query expansion</div>
+                <div class="stage-output">&#8594; Top 30 by BM25 relevance</div>
+              </div>
+              <div class="data-panel" id="p2-s2a-panel">
+                <div class="dp-row">
+                  <div class="dp-input"><div class="dp-label">Input</div><div class="dp-text">Query: "MFA gaps ISO 27001"</div></div>
+                  <div class="dp-action"><div class="dp-label">Does</div><div class="dp-arrow">&#8594;</div><div class="dp-action-text">Full-text keyword search with domain filter</div></div>
+                  <div class="dp-output"><div class="dp-label">Output</div><div class="dp-text">Top 30 facts by keyword relevance
+#1: "Legacy admin portal lacks MFA" [FINDING]</div></div>
+                </div>
+                <div class="dp-why"><div class="dp-why-label">Why</div>Catches exact keyword matches that semantic search might miss. "ISO 27001" as a keyword is unambiguous.</div>
+              </div>
+            </div>
+            <div class="stage-wrapper" id="p2-s2b-wrap">
+              <div class="stage" id="p2-s2b" style="--stage-color: #76e3ea" data-modal="p2-s2b">
+                <div class="stage-check" id="p2-s2b-check">&#10003;</div>
+                <div class="stage-number">2b</div>
+                <div class="stage-name">Vector Search</div>
+                <div class="stage-desc">Cosine similarity on 512-dim embeddings. Domain-filtered for efficiency.</div>
+                <div class="stage-output">&#8594; Top 30 by semantic similarity</div>
+              </div>
+              <div class="data-panel" id="p2-s2b-panel">
+                <div class="dp-row">
+                  <div class="dp-input"><div class="dp-label">Input</div><div class="dp-text">Query embedding
+(512-dim float32)</div></div>
+                  <div class="dp-action"><div class="dp-label">Does</div><div class="dp-arrow">&#8594;</div><div class="dp-action-text">Cosine similarity search</div></div>
+                  <div class="dp-output"><div class="dp-label">Output</div><div class="dp-text">Top 30 facts by semantic similarity
+0.87: "MFA required for all privileged access [POLICY]"</div></div>
+                </div>
+                <div class="dp-why"><div class="dp-why-label">Why</div>Catches semantic matches that keywords miss. "authentication weaknesses" finds facts about "MFA gaps" even without exact keyword overlap.</div>
+              </div>
+            </div>
+            <div class="stage-wrapper" id="p2-s2c-wrap">
+              <div class="stage" id="p2-s2c" style="--stage-color: #76e3ea" data-modal="p2-s2c">
+                <div class="stage-check" id="p2-s2c-check">&#10003;</div>
+                <div class="stage-number">2c</div>
+                <div class="stage-name">Entity Overlap</div>
+                <div class="stage-desc">Named entity matching (HippoRAG-inspired) as 3rd RRF signal. Pure local, &lt;1ms.</div>
+                <div class="stage-output">&#8594; Boost BFs with matching entities</div>
+              </div>
+              <div class="data-panel" id="p2-s2c-panel">
+                <div class="dp-row">
+                  <div class="dp-input"><div class="dp-label">Input</div><div class="dp-text">Query entities:
+['MFA', 'ISO 27001']
+entities table: 1,068 rows</div></div>
+                  <div class="dp-action"><div class="dp-label">Does</div><div class="dp-arrow">&#8594;</div><div class="dp-action-text">Boosts facts sharing named entities with query</div></div>
+                  <div class="dp-output"><div class="dp-label">Output</div><div class="dp-text">Entity overlap scores:
+"MFA" → 34 BFs boosted
+"ISO 27001" → 8 BFs boosted</div></div>
+                </div>
+                <div class="dp-why"><div class="dp-why-label">Why</div>Boosts facts that share named entities with the query. If user asks about "AWS IAM", facts mentioning "AWS IAM" get priority — faster and more precise than keyword search.</div>
+              </div>
+            </div>
+            <div class="stage-wrapper" id="p2-s2d-wrap">
+              <div class="stage" id="p2-s2d" style="--stage-color: #39d353" data-modal="p2-s2d">
+                <div class="stage-check" id="p2-s2d-check">&#10003;</div>
+                <div class="stage-number">2d</div>
+                <div class="stage-name">RRF Fusion</div>
+                <div class="stage-desc">Reciprocal Rank Fusion (k=60). FINDING x1.3 boost, domain-balanced allocation.</div>
+                <div class="stage-output">&#8594; Merged ranked list, top 30-50</div>
+              </div>
+              <div class="data-panel" id="p2-s2d-panel">
+                <div class="dp-row">
+                  <div class="dp-input"><div class="dp-label">Input</div><div class="dp-text">3 ranked lists:
+FTS5 + Vector + Entity
+(up to 30 each)</div></div>
+                  <div class="dp-action"><div class="dp-label">Does</div><div class="dp-arrow">&#8594;</div><div class="dp-action-text">Reciprocal Rank Fusion (k=60)</div></div>
+                  <div class="dp-output"><div class="dp-label">Output</div><div class="dp-text">Single merged ranking
+#1 [FINDING] "Legacy admin portal lacks MFA" rrf=0.043
+#2 [POLICY] "MFA required for all privileged" rrf=0.039</div></div>
+                </div>
+                <div class="dp-why"><div class="dp-why-label">Why</div>Each search method has blind spots. Combining 3 signals via Reciprocal Rank Fusion gives more robust results than any single method alone.</div>
+              </div>
+            </div>
+            <div class="stage-wrapper" id="p2-s2e-wrap">
+              <div class="stage" id="p2-s2e" style="--stage-color: #39d353" data-modal="p2-s2e">
+                <div class="stage-check" id="p2-s2e-check">&#10003;</div>
+                <div class="stage-number">2e</div>
+                <div class="stage-name">Jina Reranker</div>
+                <div class="stage-desc">Cross-encoder reranking via Jina API. Graceful degradation on timeout/error.</div>
+                <div class="stage-output">&#8594; Top 30 reranked by relevance</div>
+              </div>
+              <div class="data-panel" id="p2-s2e-panel">
+                <div class="dp-row">
+                  <div class="dp-input"><div class="dp-label">Input</div><div class="dp-text">Top 30 merged facts
++ query text
+(API timeout: 5s)</div></div>
+                  <div class="dp-action"><div class="dp-label">Does</div><div class="dp-arrow">&#8594;</div><div class="dp-action-text">Cross-encoder reranking for precise relevance</div></div>
+                  <div class="dp-output"><div class="dp-label">Output</div><div class="dp-text">Top 30 reranked by neural model
+(cross-encoder vs bi-encoder ≈ similarity)</div></div>
+                </div>
+                <div class="dp-why"><div class="dp-why-label">Why</div>RRF ranks by position, not relevance. The neural cross-encoder reads each fact against the query to judge true relevance — expensive but precise.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="fork-path fork-path-full" id="p2-fork-full">
+          <div class="fork-path-title">
+            <span class="full-label" style="color:var(--orange)">FULL</span>
+            Factual Path
+          </div>
+          <div class="fork-stages">
+            <div class="stage-wrapper" id="p2-s2f-wrap">
+              <div class="stage" id="p2-s2f" style="--stage-color: #f0883e" data-modal="p2-s2f">
+                <div class="stage-check" id="p2-s2f-check">&#10003;</div>
+                <div class="stage-number">2f</div>
+                <div class="stage-name">Load Full Policy</div>
+                <div class="stage-desc">Read balanced-policies-v16.md from disk. Policy autodiscovery: searches multiple paths.</div>
+                <div class="stage-output">&#8594; 1,127 statements, ~37K tokens</div>
+              </div>
+              <div class="data-panel" id="p2-s2f-panel">
+                <div class="dp-row">
+                  <div class="dp-input"><div class="dp-label">Input</div><div class="dp-text">balanced-policies-v16.md
+(autodiscovered from
+/home/site/wwwroot/)</div></div>
+                  <div class="dp-action"><div class="dp-label">Does</div><div class="dp-arrow">&#8594;</div><div class="dp-action-text">Loads full 1,127 statements</div></div>
+                  <div class="dp-output"><div class="dp-label">Output</div><div class="dp-text">~37K tokens of complete policy
+Requirements + Observations
+across all 23 domains</div></div>
+                </div>
+                <div class="dp-why"><div class="dp-why-label">Why</div>For factual questions ("What is our MFA policy?"), the LLM needs the complete picture. RAG's 30 facts would miss important context and give an incomplete answer.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Merge indicator -->
+      <div style="display:flex;align-items:center;gap:12px;margin:8px 0 4px;padding:0 12px">
+        <div style="flex:1;height:1px;background:linear-gradient(90deg,transparent,var(--border))"></div>
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:4px 14px;font-size:0.8rem;color:var(--text-muted);white-space:nowrap">RAG + Full Policy paths merge here</div>
+        <div style="flex:1;height:1px;background:linear-gradient(90deg,var(--border),transparent)"></div>
+      </div>
+
+      <!-- Post-merge stages: laid out in a 2-column then 1-column grid for better use of space -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px">
+
+        <div class="stage-wrapper" id="p2-s3-wrap">
+          <div class="stage" id="p2-s3" style="--stage-color: #d2a8ff" data-modal="p2-s3">
+            <div class="stage-check" id="p2-s3-check">&#10003;</div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div class="stage-number">3</div>
+              <div>
+                <div class="stage-name">OSCAL Framework Injection</div>
+                <div class="stage-model" style="font-size:11px;margin-top:2px">6 packs: NIST 800-53, ISO 27001, CSA CCM v4, CIS v8, GDPR, Israel PPL — 2,786 total controls</div>
+                <div class="stage-desc">Detects framework mentions in question. Injects relevant control definitions. Zero overhead when no framework mentioned.</div>
+              </div>
+            </div>
+            <div class="stage-output">&#8594; Detected ISO 27001 &#8594; A.5.1, A.5.3, A.5.15 injected</div>
+          </div>
+          <div class="data-panel" id="p2-s3-panel">
+            <div class="dp-row">
+              <div class="dp-input"><div class="dp-label">Input</div><div class="dp-text">Detected: ISO 27001
+Domain: Access Control
+Framework pack: iso-27001.json
+(OSCAL = Open Security Controls Assessment Language — NIST standard for machine-readable security frameworks)</div></div>
+              <div class="dp-action"><div class="dp-label">Does</div><div class="dp-arrow">&#8594;</div><div class="dp-action-text">Looks up matching control definitions</div></div>
+              <div class="dp-output"><div class="dp-label">Output (6 packs, 2,786 controls)</div><div class="dp-text">## Framework Requirements
+### ISO/IEC 27001:2022
+- A.5.1  Info security policies
+- A.5.15 Access control
+- A.8.5  Secure authentication</div></div>
+            </div>
+            <div class="dp-why"><div class="dp-why-label">Why</div>When a user asks about ISO 27001, the LLM needs to know what the standard actually requires (e.g., "A.8.5 Secure authentication"). Without this, the LLM can only describe what we DO, not what we SHOULD do.</div>
+          </div>
+        </div>
+
+        <div class="stage-wrapper" id="p2-s4-wrap">
+          <div class="stage" id="p2-s4" style="--stage-color: #bc8cff" data-modal="p2-s4">
+            <div class="stage-check" id="p2-s4-check">&#10003;</div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div class="stage-number">4</div>
+              <div>
+                <div class="stage-name">Build System Prompt</div>
+                <div class="stage-model" style="font-size:11px;margin-top:2px">U-curve reordering + prompt caching (~80% hit rate)</div>
+                <div class="stage-desc">Assembles all context in optimal order. Most important at beginning and end (Lost-in-Middle mitigation).</div>
+              </div>
+            </div>
+            <div class="stage-output">
+              CISO rules &#8594; Tier 2 summary &#8594; OSCAL &#8594; Facts/Policy &#8594; Instructions
+              <div class="token-badge">~4,800 tokens (RAG) | ~37,000 tokens (Full Policy)</div>
+            </div>
+          </div>
+          <div class="data-panel" id="p2-s4-panel">
+            <div class="dp-row">
+              <div class="dp-input"><div class="dp-label">Input</div><div class="dp-text">5 components (U-curve order):
+1. CISO escalation rules
+2. Tier 2 domain summary
+3. OSCAL controls
+4. Retrieved facts / full policy
+5. Reasoning instructions</div></div>
+              <div class="dp-action"><div class="dp-label">Does</div><div class="dp-arrow">&#8594;</div><div class="dp-action-text">Assembles: Tier 2 summaries + OSCAL controls + Retrieved facts + Instructions</div></div>
+              <div class="dp-output"><div class="dp-label">Output</div><div class="dp-text">System prompt assembled:
+~4,800 tokens (RAG path)
+~37,000 tokens (Full Policy)
+Cache hit: ~80% on repeated domains</div></div>
+            </div>
+            <div class="dp-why"><div class="dp-why-label">Why</div>The prompt is the LLM's entire world. Careful assembly (Tier 2 overview → OSCAL standards → Retrieved evidence → Instructions) creates a structured reasoning path for better answers.</div>
+          </div>
+        </div>
+
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
+
+        <div class="stage-wrapper" id="p2-s5-wrap">
+          <div class="stage" id="p2-s5" style="--stage-color: #f778ba" data-modal="p2-s5">
+            <div class="stage-check" id="p2-s5-check">&#10003;</div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div class="stage-number">5</div>
+              <div>
+                <div class="stage-name">LLM — GPT-4.1</div>
+                <div class="stage-model">gpt-4.1-datazone (DataZoneStandard, EU-routed, Sweden Central)</div>
+              </div>
+            </div>
+            <div class="stage-output">&#8594; Structured answer with gap analysis, compliance mapping, recommendations</div>
+          </div>
+          <div class="data-panel" id="p2-s5-panel">
+            <div class="dp-row">
+              <div class="dp-input"><div class="dp-label">Input</div><div class="dp-text">System prompt (~4.8K tokens)
++ question:
+"What gaps exist in our MFA
+implementation for ISO 27001?"</div></div>
+              <div class="dp-action"><div class="dp-label">Does</div><div class="dp-arrow">&#8594;</div><div class="dp-action-text">Generates structured answer</div></div>
+              <div class="dp-output"><div class="dp-label">Output</div><div class="dp-text">Gap analysis:
+Current State: MFA enforced org-wide
+Gap: Legacy admin portal unprotected
+Target: ISO 27001 A.8.5 compliance
+Risk: HIGH | Priority: Critical</div></div>
+            </div>
+            <div class="dp-why"><div class="dp-why-label">Why</div>GPT-4.1 synthesizes all context into a structured answer. The quality of the answer is only as good as the context we built in the previous steps.</div>
+          </div>
+        </div>
+
+        <div class="stage-wrapper" id="p2-s6-wrap">
+          <div class="stage" id="p2-s6" style="--stage-color: #3fb950" data-modal="p2-s6">
+            <div class="stage-check" id="p2-s6-check">&#10003;</div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div class="stage-number">6</div>
+              <div>
+                <div class="stage-name">Evidence Resolution</div>
+                <div class="stage-desc">Traces BF IDs &#8594; source_fact_ids &#8594; document metadata. Deduplicates by doc_id. Graceful degradation returns [].</div>
+              </div>
+            </div>
+            <div class="stage-output">&#8594; sources: ["InfoSec Policy v16.docx", "Pentest Report 2025-Q4.pdf"]</div>
+          </div>
+          <div class="data-panel" id="p2-s6-panel">
+            <div class="dp-row">
+              <div class="dp-input"><div class="dp-label">Input</div><div class="dp-text">Answer + source BF IDs
+from retrieval stage
+(source_fact_ids JSON arrays)</div></div>
+              <div class="dp-action"><div class="dp-label">Does</div><div class="dp-arrow">&#8594;</div><div class="dp-action-text">Traces BFs back to source documents</div></div>
+              <div class="dp-output"><div class="dp-label">Output</div><div class="dp-text">sources: [
+  { title: "InfoSec Policy v16",
+    date: "2025-01", category: "policy" },
+  { title: "Pentest Report 2025-Q4",
+    date: "2025-10", category: "audit" }
+]</div></div>
+            </div>
+            <div class="dp-why"><div class="dp-why-label">Why</div>Users need to trust the answer. Tracing back to source documents ("InfoSec Policy v16, page 23") provides auditability and builds confidence in the response.</div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <div class="final-output" style="border-color:rgba(63,185,80,0.3);border-width:2px;background:rgba(63,185,80,0.04)">
+      <div class="final-output-icon">&#128225;</div>
+      <div class="final-output-text">
+        <strong>Final Output: JSON response delivered to user</strong>
+        <span style="font-family:monospace;font-size:0.82rem;color:var(--cyan)">{ "answer": "...", "sources": [...], "metadata": { "rag_mode": "rag", "tokens": 4823, "latency_ms": 2140 } }</span>
+        <div style="margin-top:6px;font-size:0.82rem;color:var(--text-muted)">Latency: ~2-3s (RAG) | ~5-8s (Full Policy) &nbsp;&bull;&nbsp; Eval score: 4.49 / 5.0 (target &#8805;4.3)</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Shared data panel for Pipeline 2 — updated dynamically during animation -->
+  <div class="shared-data-panel" id="p2-shared-panel"></div>
+</div>
+
+<!-- ======================== MODAL ======================== -->
+<div class="stage-modal" id="stage-modal">
+  <div class="modal-card" id="modal-card">
+    <button class="modal-close" id="modal-close-btn">&#10005;</button>
+    <div class="modal-title" id="modal-title"></div>
+    <div class="modal-model" id="modal-model"></div>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<script>
+// ── Speed control ──────────────────────────────────────────────
+let speed = 1;
+
+function setSpeed(s) {
+  speed = s;
+  document.querySelectorAll('.speed-btn').forEach(function(b) {
+    b.classList.toggle('active', parseFloat(b.dataset.speed) === s);
+  });
+}
+
+function delay(ms) {
+  return new Promise(function(r) { setTimeout(r, ms / speed); });
+}
+
+// ── Pause state ────────────────────────────────────────────────
+// Each pipeline has its own pause state + a resume callback
+var p1Paused = false;
+var p1ResumeCallback = null;
+var p1ActiveStageId = null;
+
+var p2Paused = false;
+var p2ResumeCallback = null;
+var p2ActiveStageId = null;
+
+// Static (no-animation) active stage tracking — for click-to-show-panel when not running
+var p1StaticActiveId = null;
+var p2StaticActiveId = null;
+
+function setPaused(pipeline, paused) {
+  if (pipeline === 1) {
+    p1Paused = paused;
+    document.getElementById('p1-paused-badge').classList.toggle('visible', paused);
+  } else {
+    p2Paused = paused;
+    document.getElementById('p2-paused-badge').classList.toggle('visible', paused);
+  }
+}
+
+// pauseableWait: resolves after ms OR when resumed. Returns a promise.
+// If paused mid-wait, it waits for resume then resolves.
+function pauseableWait(ms, pipeline) {
+  return new Promise(function(resolve) {
+    var remaining = ms / speed;
+    var started = Date.now();
+    var timer = null;
+
+    function startTimer() {
+      timer = setTimeout(function() { resolve(); }, remaining);
+    }
+
+    var isPaused = (pipeline === 1) ? p1Paused : p2Paused;
+
+    if (isPaused) {
+      // Already paused — register resume to continue
+      registerResume(pipeline, function() {
+        startTimer();
+      });
+    } else {
+      startTimer();
+
+      // Also register a pause listener to capture remaining time
+      var origResume = (pipeline === 1) ? p1ResumeCallback : p2ResumeCallback;
+      if (pipeline === 1) {
+        p1ResumeCallback = function() {
+          clearTimeout(timer);
+          remaining -= (Date.now() - started);
+          if (remaining < 0) remaining = 0;
+          startTimer();
+          // Restore original resume callback chain
+          p1ResumeCallback = origResume;
+        };
+      } else {
+        p2ResumeCallback = function() {
+          clearTimeout(timer);
+          remaining -= (Date.now() - started);
+          if (remaining < 0) remaining = 0;
+          startTimer();
+          p2ResumeCallback = origResume;
+        };
+      }
+    }
+  });
+}
+
+function registerResume(pipeline, cb) {
+  if (pipeline === 1) {
+    p1ResumeCallback = cb;
+  } else {
+    p2ResumeCallback = cb;
+  }
+}
+
+function resume(pipeline) {
+  setPaused(pipeline, false);
+  var cb = (pipeline === 1) ? p1ResumeCallback : p2ResumeCallback;
+  if (pipeline === 1) p1ResumeCallback = null;
+  else p2ResumeCallback = null;
+  if (cb) cb();
+}
+
+// ── Stage metadata ─────────────────────────────────────────────
+var stageData = {
+  'p1-s1': {
+    title: 'Scanner',
+    model: '',
+    why: 'Without structured extraction, policy documents are just opaque files. The scanner makes them machine-readable.',
+    desc: 'Recursively scans input directories for DOCX, XLSX, and PDF files. Splits documents into overlapping text chunks with configurable window size. Attaches document metadata: filename, path, page/sheet number, section header.',
+    input: 'Raw documents:\n"Midot Information Security Policy v16.docx"\n"Pentest Report 2025-Q4.pdf"\n"IT Controls Matrix.xlsx"',
+    output: '25,006 raw text chunks\nEach chunk: { text, doc_id, page, source_path, chunk_index }'
+  },
+  'p1-s2': {
+    title: 'Index Builder',
+    model: '',
+    why: 'Metadata links every chunk back to its source document and page — essential for evidence tracing later.',
+    desc: 'Builds a structured SQLite index with document metadata. Assigns domain tags using keyword heuristics. Tracks chunk provenance for evidence resolution. Creates the chunk-to-document mapping used by evidence_resolver.py.',
+    input: '25,006 text chunks with source metadata',
+    output: 'Structured index:\n{ chunk_id, doc_id, domain_tags[], section_header, page_num, raw_text }'
+  },
+  'p1-s3': {
+    title: 'Abstractor',
+    model: 'Ollama — qwen2.5:32b (AWS Spot GPU, Ohio us-east-2, ~$0.58/hr)',
+    why: 'Raw policy text is verbose and ambiguous. The abstractor distills each passage into a single, atomic behavioral fact that can be compared and searched.',
+    desc: 'Core LLM stage. For each chunk, extracts 1-5 atomic behavioral facts (BFs). Each BF is a single, self-contained policy statement. Runs on AWS Spot instances. KEEP_ALIVE=24h to avoid model eviction. AMI blobs corrupt on snapshot — always fresh pull.',
+    input: 'Raw chunk (real example from Midot Security Ops Policy):\n"RBAC & MFA; WAF & ZTNA; encryption; secure SDLC (SAST/DAST/SCA); backup & recovery; logging & SIEM; VM & patching; IR; TPRM; governed by change management."',
+    output: 'Output BF (atomic, searchable):\n"MFA and RBAC are implemented for access control."\n\n(Verbose 22-word acronym soup → clean 8-word behavioral fact)'
+  },
+  'p1-s4': {
+    title: 'Classify Facts',
+    model: 'Heuristic rule-based classifier (<1ms per fact)',
+    why: 'Not all facts are equal. A FINDING ("device patches not enforced") needs different treatment than a POLICY ("passwords must be securely stored"). Classification enables smart filtering and prioritization.',
+    desc: 'Assigns one of 5 fact types using keyword heuristics in classify_facts.py. No LLM call — deterministic and fast. Types: POLICY (normative requirements using "shall/must/required"), CONTROL (technical/process controls), FINDING (audit observations), RECOMMENDATION (suggested improvements), TEST_SCENARIO (test cases).',
+    input: 'Real examples:\nPOLICY: "Passwords must be securely stored to prevent theft by unauthorized individuals."\nFINDING: "Device updates such as security patches are not enforced."\nRECOMMENDATION: "Implement a secure software development cycle, leveraging OWASP CLASP."',
+    output: 'POLICY: 12,000 facts\nFINDING: 8,000 facts\nCONTROL: 3,000 facts\nRECOMMENDATION: 1,500 facts\nTEST_SCENARIO: 500 facts'
+  },
+  'p1-s5': {
+    title: 'Detect Stale Findings',
+    model: 'difflib.SequenceMatcher (threshold >= 0.70)',
+    why: 'Audit findings from 2 years ago that were not repeated in the latest audit are likely resolved. Marking them HISTORICAL prevents outdated findings from polluting current gap analysis.',
+    desc: 'Groups FINDING BFs by audit family (directory prefix). Uses fuzzy string matching to detect if a finding appeared in a previous audit cycle. Unrepeated findings from past audits are marked HISTORICAL. Manual overrides via finding-overrides.json. HISTORICAL facts are filtered from retrieval results at query time.',
+    input: '[2024-Q1] "Legacy portal missing MFA"\n[2025-Q1] "Legacy admin portal lacks MFA enforcement"',
+    output: '[2024-Q1] finding -> HISTORICAL (similarity=0.71, repeated in 2025)\n[2025-Q1] finding -> CURRENT (most recent occurrence)'
+  },
+  'p1-s6': {
+    title: 'Quality Guard',
+    model: 'Regex + verified_vendors.json + tools-catalog.json (deterministic, <1s)',
+    why: 'Client audit documents (Cat B/C) leak their tools into Midot\'s behavioral facts. Tool contamination detection uses source categories from document indexing — no manual ownership flags needed. Also catches vendor contamination, stale ISO refs, and false compliance claims. Fatal gate — bad data in = bad answers out.',
+    desc: 'Four-scan pipeline gate: (1) Vendor contamination — Drata → [redacted vendor], word-boundary matching. (2) Stale framework refs — ISO 27001:2013 → 2022. (3) False compliance claims — SOC2/HITRUST patterns stripped. (4) Tool contamination — deprecated tools (Trellix, McAfee) always tagged HISTORICAL; non-deprecated tools sourced only from Cat B/C documents tagged HISTORICAL; tools with Cat A sources always kept. Ownership derived automatically from source categories, not manual flags. Runtime layer (_sanitize_data_quality) catches anything missed at prompt-build time.',
+    input: '25,006 BFs in SQLite + verified_vendors.json + tools-catalog.json\nExample BF: "We use Trellix EDR for endpoint detection" (source: Cat B)',
+    output: 'Vendor fixes: Drata → [redacted vendor]\nISO 27001:2013 → 2022\nFalse claims stripped\n878 tool-contaminated BFs → temporal_tag=HISTORICAL\n(72 deprecated + 803 B/C-only + 3 misspellings)'
+  },
+  'p1-s7': {
+    title: 'Populate Embeddings',
+    model: 'text-embedding-3-small (Azure DataZoneStandard, 512 dims, 120K TPM)',
+    why: 'Keywords miss semantic similarity — "access control" != "authentication management" to a keyword engine. Vector embeddings find semantically similar facts even when the words differ.',
+    desc: 'Generates 512-dimensional float32 embedding vectors for all BFs. CRITICAL: raw text only — contextual prefix ([DOMAIN: X] [TYPE: Y]) was tested and reverted because it degrades quality with text-embedding-3-small. Stored as BLOBs in SQLite for pure-Python cosine similarity at query time (no vector DB needed).',
+    input: '25,006 BFs as raw text strings',
+    output: '25,006 x 512-dim float32 vectors\nStorage: ~52MB in SQLite BLOBs\nCost: ~$0.015 total at 512 dims'
+  },
+  'p1-s8': {
+    title: 'Populate Entities',
+    model: 'Static regex + ABSTRACT_MAP (pure Python, <1ms/fact)',
+    why: 'When a user asks about "AWS IAM", we can instantly find all facts mentioning "AWS IAM" — faster and more precise than keyword or semantic search alone.',
+    desc: 'Extracts named entities from BFs using regex patterns and an ABSTRACT_MAP lookup (scripts/populate_entities.py). Entities are pre-indexed in the entities table for fast overlap scoring at query time. No network calls — entirely local. ~1 second for 25K facts. knowledge_graph.py is NOT deployed to Azure.',
+    input: 'BF: "MFA is required for all privileged access and remote users"',
+    output: '1,068 entity rows\n55 unique entities\nExamples: MFA, VPN, Active Directory, ISO 27001, Pentest, Vulnerability Assessment'
+  },
+  'p1-s9': {
+    title: 'Derive v4',
+    model: 'GPT-4.1 (Azure DataZoneStandard, EU-routed)',
+    why: '25,006 individual facts are too many for an LLM to process. Derive synthesizes them into 1,127 balanced policy statements — a compressed, comprehensive policy document.',
+    desc: 'Synthesizes BFs per domain into structured, numbered policy statements. Separates Requirements (POLICY/CONTROL) from Observations (FINDING/RECOMMENDATION). TEST_SCENARIO facts excluded by default (use --include-test-scenarios flag). Output is the authoritative policy document used for full-policy answers.',
+    input: '5 MFA-related BFs for "Access Control & Identity":\n[POLICY] "MFA is required for all privileged access"\n[POLICY] "MFA required for remote connections"\n[CONTROL] "RBAC enforced via Active Directory"\n[FINDING] "Legacy admin portal lacks MFA"\n[RECOMMENDATION] "Implement FIDO2 tokens"',
+    output: 'Synthesized policy statement:\n"MFA and RBAC are implemented for access control;\nMFA is required for all privileged accounts and\nsupported for all customer users."\n\nbalanced-policies-v16.md: 1,127 statements, 23 domains'
+  },
+  'p1-s10': {
+    title: 'Generate Domain Summaries',
+    model: 'GPT-4.1 (Azure DataZoneStandard, EU-routed)',
+    why: 'For reasoning questions, the LLM needs a high-level overview before diving into specifics. Domain summaries provide the "forest" view so the LLM does not get lost in the "trees".',
+    desc: 'Generates concise Tier 2 summaries for each of 23 security domains. Each summary distills key posture, gaps, and coverage. Uploaded to Azure Blob (pipeline-data/domain-summaries-v16.json). Downloaded by ppba-api at cold start. U-curve reordered in prompts for Lost-in-Middle mitigation. Bug: use --force to regenerate (cached domains skipped in export).',
+    input: 'BFs + v4 statements for all 23 domains',
+    output: '23 domain summaries (1.5MB JSON)\npipeline-data/domain-summaries-v16.json\nExample: "Access Control: MFA enforced org-wide except legacy admin portal. ISO 27001 A.5.15 partially compliant."'
+  },
+  'p2-s1': {
+    title: 'Classify Question',
+    model: 'LUT keyword matching (<1ms) + LLM fallback if ambiguous',
+    why: 'Different questions need different strategies. "What is our MFA policy?" needs breadth (full policy). "What gaps exist in MFA for ISO 27001?" needs depth (targeted retrieval). Wrong routing = wrong answer quality.',
+    desc: 'First pass: keyword LUT in keyword_sets.json checks for reasoning indicators (gap analysis keywords: "weakness", "missing", "exposed", "lack"; 7 regex patterns). Second pass: framework keyword + domain keyword combo. LLM fallback only if ambiguous. Factual questions skip domain classification entirely (zero overhead). classification_method field indicates which path was taken.',
+    input: '"What gaps exist in our MFA implementation for ISO 27001?"',
+    output: 'is_reasoning = True\ndomains = ["Access Control & Identity"]\nclassification_method = "lut_keyword"\nframework_detected = "iso27001"'
+  },
+  'p2-routing': {
+    title: 'Hybrid Routing Decision',
+    model: '',
+    why: 'Full policy gives comprehensive but expensive answers (37K tokens). RAG gives focused, cheaper answers (3-5K tokens). Routing optimizes quality AND cost — factual questions need full context, reasoning questions benefit from targeted retrieval.',
+    desc: 'Core hybrid mode logic introduced to fix the RAG quality gap (factual questions scored 3.44 with RAG vs 4.64 with full policy). Routing: is_reasoning=True -> RAG (3-5K tokens), is_reasoning=False -> Full Policy (37K tokens). Per-request enable_rag=True override forces all questions through RAG. Server env var PPBA_ENABLE_RAG=true enables hybrid mode. rag_mode field in response: "rag" | "full_policy" | "disabled".',
+    input: 'is_reasoning=True + PPBA_ENABLE_RAG=true\n-> RAG path selected\n\nis_reasoning=False + PPBA_ENABLE_RAG=true\n-> Full Policy path selected',
+    output: 'rag_mode: "rag" or "full_policy"\n\nResult: v16_rag eval score = 4.49\n(target >= 4.3 achieved)\nFactual: 3.44 -> 4.64 (+1.20)'
+  },
+  'p2-s2a': {
+    title: 'FTS5 Search',
+    model: 'SQLite FTS5 with BM25 ranking',
+    why: 'Catches exact keyword matches that semantic search might miss. "ISO 27001" as a keyword is unambiguous — no embedding model needed.',
+    desc: 'Full-text keyword search using SQLite FTS5. Query is expanded with synonym groups via _expand_query() for better recall (e.g., "MFA" expands to "MFA|multi-factor|2FA|two-factor"). Searches fact_text column across all non-HISTORICAL facts in the relevant domains.',
+    input: 'Query: "MFA gaps ISO 27001 privileged access"\nExpanded: "MFA|multi-factor|2FA gaps privileged|admin access"',
+    output: 'Top 30 BFs ranked by BM25 score\nExample top result:\n"Legacy admin portal lacks MFA enforcement\n[FINDING, Access Control, score=8.4]"'
+  },
+  'p2-s2b': {
+    title: 'Vector Search',
+    model: 'text-embedding-3-small -> cosine similarity (pure Python)',
+    why: 'Catches semantic matches that keywords miss. "authentication weaknesses" finds facts about "MFA gaps" even without exact keyword overlap.',
+    desc: 'Embeds the query using text-embedding-3-small (same model as the index). Pure-Python cosine similarity over float32 BLOBs — no vector DB required (sqlite-vec for ANN). Domain-filtered for efficiency: only searches BFs in the classified domains. Returns top_k=30 for single-domain, 50 for multi-domain questions.',
+    input: 'Query embedding: 512-dim float32 vector\nDomain filter: ["Access Control & Identity"]',
+    output: 'Top 30 BFs by semantic similarity\nscore=0.87: "MFA required for all privileged access [POLICY]"\nscore=0.84: "VPN mandatory for remote access [POLICY]"'
+  },
+  'p2-s2c': {
+    title: 'Entity Overlap',
+    model: 'Static entity matching (HippoRAG-inspired, <1ms)',
+    why: 'Boosts facts that share named entities with the query. If a user asks about "AWS IAM", facts mentioning "AWS IAM" get priority — faster and more precise than keyword or semantic search alone.',
+    desc: 'Extracts entities from the query using the same static patterns as populate_entities.py. Matches against pre-indexed entities table (1,068 rows, 55 unique entities). BFs that share entities with the query get a score boost as a 3rd RRF signal. Entirely local — no network calls. Feature-flagged via PPBA_ENABLE_GRAPH_RETRIEVAL (server default: true).',
+    input: 'Query entities extracted: ["MFA", "ISO 27001", "privileged access"]\nEntities table: 1,068 rows',
+    output: 'Entity match scores:\n"MFA" -> 34 BFs boosted\n"privileged access" -> 12 BFs boosted\n"ISO 27001" -> 8 BFs boosted'
+  },
+  'p2-s2d': {
+    title: 'RRF Fusion',
+    model: 'Reciprocal Rank Fusion (k=60) — deterministic',
+    why: 'Each search method has blind spots. Combining 3 signals via Reciprocal Rank Fusion gives more robust results than any single method alone.',
+    desc: 'Merges FTS5, vector, and entity overlap rankings using Reciprocal Rank Fusion: score = sum(1/(k + rank_i)). Type-boosted scoring: FINDING x1.3, POLICY x1.0, CONTROL x0.9. Domain-balanced allocation for multi-domain questions: per-domain top_k/N allocation with minimum 3 per domain.',
+    input: 'Three ranked lists (up to 30 each)\nFTS5 rankings + Vector rankings + Entity scores',
+    output: 'Merged ranked list:\nRank 1: [FINDING] "Legacy admin portal lacks MFA" (rrf=0.043)\nRank 2: [POLICY] "MFA required for all privileged" (rrf=0.039)\nTop 30-50 facts selected'
+  },
+  'p2-s2e': {
+    title: 'Jina Reranker',
+    model: 'jina-reranker-v2-base-multilingual (Jina AI API)',
+    why: 'RRF ranks by position, not relevance. The neural cross-encoder reads each fact against the query to judge true relevance — expensive but precise. Cost: ~$0.18/month.',
+    desc: 'Cross-encoder reranking via Jina Reranker API. Re-scores (query, document) pairs using a cross-encoder model — much more accurate than bi-encoder cosine similarity. Graceful degradation on timeout or HTTP error (falls back to RRF order). Feature-flagged: PPBA_ENABLE_RERANKER (server default: false, enabled per-request for eval). Cost: ~$0.18/month. Key stored in ppba-keyvault.',
+    input: 'Query + top 30-50 RRF results\nAPI timeout: 5s (PPBA_JINA_RERANKER_TIMEOUT)',
+    output: 'Top 30 reranked facts\nCross-encoder re-orders based on actual relevance\nvs bi-encoder approximate similarity'
+  },
+  'p2-s2f': {
+    title: 'Load Full Policy',
+    model: '',
+    why: 'For factual questions ("What is our MFA policy?"), the LLM needs the complete picture. RAG\'s 30 facts would miss important context and give an incomplete answer.',
+    desc: 'For factual questions: loads the complete balanced-policies-v16.md from disk or memory cache. Policy autodiscovery searches multiple paths: __file__ dir -> CWD -> /home/site/wwwroot -> legacy local. PPBA_DEFAULT_VERSION env var overrides autodiscovery. Health endpoint (/api/health) exposes policy.discovered_versions and policy.search_dirs_exist.',
+    input: 'Policy file: balanced-policies-v16.md\nPath: /home/site/wwwroot/ (Azure) or local',
+    output: '1,127 policy statements across 23 domains\n~37,000 tokens\nContains: Requirements + Observations per domain\nFormatted with domain headers and OSCAL references'
+  },
+  'p2-s3': {
+    title: 'OSCAL Framework Injection',
+    model: '6 framework packs: NIST 800-53 (2,206), ISO 27001 (93), CSA CCM v4 (197), CIS v8 (153), GDPR (97), Israel PPL (40)',
+    why: 'When a user asks about ISO 27001, the LLM needs to know what the standard actually requires (e.g., "A.8.5 Secure authentication"). Without this, the LLM can only describe what we DO, not what we SHOULD do. OSCAL = Open Security Controls Assessment Language, a NIST standard for machine-readable security frameworks.',
+    desc: 'Detects framework mentions in the question text. If detected, injects matching OSCAL control definitions from the appropriate framework pack. 6 supported frameworks with 2,786 total controls. Framework packs in lut-packs/frameworks/. Zero overhead when no framework mentioned.',
+    input: 'Detected "ISO 27001" in question\nDomain: "Access Control & Identity"\nFramework pack: lut-packs/frameworks/iso-27001.json',
+    output: 'Injected OSCAL controls:\n### ISO 27001 Controls (Access Control)\nA.5.1 - Information security policies\nA.5.3 - Segregation of duties\nA.5.15 - Access control\nA.8.2 - Privileged access rights'
+  },
+  'p2-s4': {
+    title: 'Build System Prompt',
+    model: '',
+    why: 'The prompt is the LLM\'s entire world. Careful assembly (Tier 2 overview → OSCAL standards → Retrieved evidence → Instructions) creates a structured reasoning path for better answers.',
+    desc: 'Assembles the final system prompt. U-curve reordering (Lost-in-Middle mitigation): most important context at start and end, less important in middle. CISO escalation rules (8 rules) checked pre-LLM — deterministic, no tokens wasted on obvious escalations. Prompt caching: escalation block + reasoning instructions appended AFTER cache breakpoint (5-min TTL, ~80% cache hit rate on repeated domains).',
+    input: 'Five components (in U-curve order):\n1. CISO escalation rules (8 rules)\n2. Tier 2 domain summary\n3. OSCAL controls (if framework detected)\n4. Retrieved facts OR full policy\n5. Reasoning instructions (if reasoning)',
+    output: 'Final assembled system prompt:\n~4,800 tokens (RAG path)\n~37,000 tokens (full policy path)\nCache hit: ~80% on repeated domain queries'
+  },
+  'p2-s5': {
+    title: 'LLM - GPT-4.1',
+    model: 'gpt-4.1-datazone (Azure DataZoneStandard, Sweden Central, EU data residency)',
+    why: 'GPT-4.1 synthesizes all context into a structured answer. The quality of the answer is only as good as the context we built in the previous steps.',
+    desc: 'Primary model for question answering. DataZoneStandard deployment ensures EU data residency. 429 fallback: gpt-4.1-datazone. Reasoning instructions injected for gap analysis questions to force structured analysis format. CISO escalation checked pre-LLM (8 deterministic rules bypass LLM entirely for obvious escalations). Models: PPBA_AZURE_MODEL env var.',
+    input: 'System prompt (~4.8K or ~37K tokens)\nUser question:\n"What gaps exist in our MFA implementation for ISO 27001?"',
+    output: 'Structured answer:\n- Gap analysis by domain\n- ISO 27001 compliance assessment (A.5.15)\n- Specific recommendations\n- Risk level: HIGH (legacy portal unprotected)\n- Remediation priority: Critical'
+  },
+  'p2-s6': {
+    title: 'Evidence Resolution',
+    model: 'evidence_resolver.py (deterministic, pure Python)',
+    why: 'Users need to trust the answer. Tracing back to source documents ("InfoSec Policy v16, page 23") provides auditability and builds confidence in the response.',
+    desc: 'Traces the provenance lineage: LLM answer -> BF IDs used in retrieval -> source_fact_ids (JSON array in BF rows) -> documents table metadata. Returns document title, date, category, path for each source. Deduplicates by doc_id. Only active when RAG is enabled. Graceful degradation: returns [] on any database error. Max ~90+ sources before ranking/limiting needed (TODO #38).',
+    input: 'BF IDs from retrieval stage\nsource_fact_ids JSON arrays in each BF\ndocuments table in ppba-v2.db',
+    output: 'sources: [\n  { title: "InfoSec Policy v16", date: "2025-01", category: "policy" },\n  { title: "Pentest Report 2025-Q4", date: "2025-10", category: "audit" }\n]'
+  }
+};
+
+// ── Wire up click handlers ─────────────────────────────────────
+document.querySelectorAll('[data-modal]').forEach(function(el) {
+  el.addEventListener('click', function(e) {
+    var id = el.getAttribute('data-modal');
+
+    // Determine which pipeline this stage belongs to
+    var pipeline = id.startsWith('p1-') ? 1 : (id.startsWith('p2-') ? 2 : 0);
+    var running = (pipeline === 1) ? p1Running : (pipeline === 2) ? p2Running : false;
+
+    if (running) {
+      var paused = (pipeline === 1) ? p1Paused : p2Paused;
+      var activeId = (pipeline === 1) ? p1ActiveStageId : p2ActiveStageId;
+
+      if (!paused) {
+        // Animation is running — pause it, highlight this stage
+        setPaused(pipeline, true);
+        // Show this stage's panel (keep the active stage panel visible too)
+        if (id !== activeId) {
+          // Clicking a different stage while running: jump to show that stage's panel
+          if (activeId) { hidePanel(activeId); }
+          showPanel(id);
+          if (pipeline === 1) p1ActiveStageId = id;
+          else p2ActiveStageId = id;
+        }
+        // If clicking the currently active stage, just pause (panel already visible)
+      } else {
+        // Already paused
+        if (id === activeId) {
+          // Click same stage again → resume
+          resume(pipeline);
+        } else {
+          // Click a different stage while paused → jump to that stage's panel, stay paused
+          if (activeId) { hidePanel(activeId); }
+          showPanel(id);
+          if (pipeline === 1) p1ActiveStageId = id;
+          else p2ActiveStageId = id;
+        }
+      }
+      return; // Don't open modal while animation is running
+    }
+
+    // Animation not running — show shared panel (toggle if same stage, switch if different)
+    var sharedPanel = getSharedPanel(id);
+    var staticActiveId = (pipeline === 1) ? p1StaticActiveId : p2StaticActiveId;
+
+    if (sharedPanel && staticActiveId === id) {
+      // Clicking the same stage again — hide the panel (toggle off)
+      hideSharedPanel(pipeline);
+      if (pipeline === 1) p1StaticActiveId = null;
+      else p2StaticActiveId = null;
+      hidePanel(id);
+    } else {
+      // Show this stage's panel (and zoom it)
+      if (staticActiveId) { hidePanel(staticActiveId); }
+      showPanel(id);
+      if (pipeline === 1) p1StaticActiveId = id;
+      else p2StaticActiveId = id;
+    }
+  });
+});
+
+document.getElementById('modal-close-btn').addEventListener('click', closeModal);
+
+document.getElementById('stage-modal').addEventListener('click', function(e) {
+  if (e.target === document.getElementById('stage-modal')) closeModal();
+});
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeModal();
+});
+
+// ── Modal (safe DOM construction) ─────────────────────────────
+function openModal(id) {
+  var data = stageData[id];
+  if (!data) return;
+
+  document.getElementById('modal-title').textContent = data.title;
+  document.getElementById('modal-model').textContent = data.model;
+
+  var body = document.getElementById('modal-body');
+  while (body.firstChild) { body.removeChild(body.firstChild); }
+
+  // Why section (shown first — most important!)
+  if (data.why) {
+    var whyDiv = document.createElement('div');
+    whyDiv.className = 'modal-why';
+    var whyLabel = document.createElement('div');
+    whyLabel.className = 'modal-why-label';
+    whyLabel.textContent = 'Why this stage exists';
+    var whyText = document.createElement('p');
+    whyText.style.margin = '0';
+    whyText.textContent = data.why;
+    whyDiv.appendChild(whyLabel);
+    whyDiv.appendChild(whyText);
+    body.appendChild(whyDiv);
+  }
+
+  // Description section
+  var descSection = document.createElement('div');
+  descSection.className = 'modal-section';
+  var descP = document.createElement('p');
+  descP.className = 'modal-desc';
+  descP.textContent = data.desc;
+  descSection.appendChild(descP);
+  body.appendChild(descSection);
+
+  // Input section
+  if (data.input) {
+    var inputSection = document.createElement('div');
+    inputSection.className = 'modal-section';
+    var inputLabel = document.createElement('div');
+    inputLabel.className = 'modal-section-label';
+    inputLabel.textContent = 'Example Input';
+    var inputCode = document.createElement('div');
+    inputCode.className = 'modal-code input-code';
+    inputCode.textContent = data.input;
+    inputSection.appendChild(inputLabel);
+    inputSection.appendChild(inputCode);
+    body.appendChild(inputSection);
+  }
+
+  // Output section
+  if (data.output) {
+    var outputSection = document.createElement('div');
+    outputSection.className = 'modal-section';
+    var outputLabel = document.createElement('div');
+    outputLabel.className = 'modal-section-label';
+    outputLabel.textContent = 'Example Output';
+    var outputCode = document.createElement('div');
+    outputCode.className = 'modal-code output-code';
+    outputCode.textContent = data.output;
+    outputSection.appendChild(outputLabel);
+    outputSection.appendChild(outputCode);
+    body.appendChild(outputSection);
+  }
+
+  document.getElementById('stage-modal').classList.add('visible');
+}
+
+function closeModal() {
+  document.getElementById('stage-modal').classList.remove('visible');
+}
+
+// ── Panel helpers ──────────────────────────────────────────────
+// Determine which shared panel to use based on stage id prefix
+function getSharedPanel(id) {
+  if (id.startsWith('p1-')) return document.getElementById('p1-shared-panel');
+  if (id.startsWith('p2-')) return document.getElementById('p2-shared-panel');
+  return null;
+}
+
+function showPanel(id) {
+  var sourcePanel = document.getElementById(id + '-panel');
+  var wrapper = document.getElementById(id + '-wrap');
+  var sharedPanel = getSharedPanel(id);
+
+  if (sourcePanel && sharedPanel) {
+    // Build a stage name header from the stage card
+    var stageEl = document.getElementById(id);
+    var stageNameEl = stageEl ? stageEl.querySelector('.stage-name') : null;
+    var stageName = stageNameEl ? stageNameEl.textContent : '';
+    var stageColor = stageEl ? (stageEl.style.getPropertyValue('--stage-color') || '#58a6ff') : '#58a6ff';
+
+    var headerHtml = stageName
+      ? '<div style="padding:10px 20px 0;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:' + stageColor + ';opacity:0.85">' + stageName + ' — Data Flow</div>'
+      : '';
+
+    // Inject the content of the per-stage panel into the shared panel
+    sharedPanel.innerHTML = headerHtml + sourcePanel.innerHTML;
+    // Re-trigger the fade-in animation
+    sharedPanel.classList.remove('visible');
+    // Force reflow to restart animation
+    void sharedPanel.offsetWidth;
+    sharedPanel.classList.add('visible');
+    // Scroll the shared panel into view so the user can see it
+    setTimeout(function() { sharedPanel.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, 50);
+  }
+  if (wrapper) { wrapper.classList.add('zoomed'); }
+}
+
+function hidePanel(id) {
+  var wrapper = document.getElementById(id + '-wrap');
+  if (wrapper) { wrapper.classList.remove('zoomed'); }
+  // Don't hide the shared panel here — it's hidden when a new stage activates
+  // or when the pipeline finishes (hideSharedPanel is called explicitly)
+}
+
+function hideSharedPanel(pipeline) {
+  var panelId = pipeline === 1 ? 'p1-shared-panel' : 'p2-shared-panel';
+  var panel = document.getElementById(panelId);
+  if (panel) { panel.classList.remove('visible'); }
+}
+
+function hideAllPanels(ids) {
+  ids.forEach(function(id) { hidePanel(id); });
+}
+
+// ── Pipeline 1 animation ───────────────────────────────────────
+var p1Stages = ['p1-s1','p1-s2','p1-s3','p1-s4','p1-s5','p1-s6','p1-s7','p1-s8','p1-s9','p1-s10'];
+var p1Running = false;
+
+// Duration each stage stays highlighted (ms at 1x speed)
+var STAGE_HOLD_MS = 3500;
+var STAGE_PAUSE_MS = 400;
+
+function runPipeline1() {
+  if (p1Running) return;
+  p1Running = true;
+  p1Paused = false;
+  p1ResumeCallback = null;
+  p1ActiveStageId = null;
+  p1StaticActiveId = null;
+
+  var btn = document.getElementById('p1-run-btn');
+  var status = document.getElementById('p1-status');
+  var progress = document.getElementById('p1-progress');
+
+  btn.disabled = true;
+  btn.textContent = 'Running...';
+
+  p1Stages.forEach(function(id) {
+    var el = document.getElementById(id);
+    el.classList.remove('active','done','processing','just-done');
+    document.getElementById(id + '-check').classList.remove('visible');
+    hidePanel(id);
+  });
+  hideSharedPanel(1);
+  progress.style.width = '0%';
+  status.className = 'status-chip status-running';
+  status.textContent = 'Running...';
+  document.getElementById('p1-paused-badge').classList.remove('visible');
+
+  var idx = 0;
+
+  function waitPauseable(ms, cb) {
+    // Wait ms, but if paused, freeze until resumed then complete the wait
+    var remaining = ms / speed;
+    var timer;
+    var paused = false;
+    var startedAt = Date.now();
+    var pollTimer;
+
+    function onFired() {
+      clearInterval(pollTimer);
+      p1ResumeCallback = prevResume;
+      cb();
+    }
+
+    function startTimer() {
+      startedAt = Date.now();
+      timer = setTimeout(onFired, remaining);
+    }
+
+    // Register a pause interceptor
+    var prevResume = p1ResumeCallback;
+    p1ResumeCallback = function() {
+      // This fires when user clicks to resume
+      if (paused) {
+        paused = false;
+        startTimer();
+      }
+      p1ResumeCallback = prevResume;
+    };
+
+    // Intercept pause requests by polling p1Paused
+    pollTimer = setInterval(function() {
+      if (!p1Running) { clearInterval(pollTimer); clearTimeout(timer); return; }
+      if (p1Paused && !paused) {
+        // Became paused mid-wait
+        paused = true;
+        clearTimeout(timer);
+        remaining -= (Date.now() - startedAt);
+        if (remaining < 0) remaining = 0;
+        clearInterval(pollTimer);
+      }
+    }, 50);
+
+    if (p1Paused) {
+      paused = true;
+      clearInterval(pollTimer);
+    } else {
+      startTimer();
+    }
+  }
+
+  function runNext() {
+    if (idx >= p1Stages.length) {
+      setPaused(1, false);
+      status.className = 'status-chip status-done';
+      status.textContent = 'Complete';
+      btn.disabled = false;
+      btn.textContent = 'Run Again';
+      p1Running = false;
+      p1ActiveStageId = null;
+      hideSharedPanel(1);
+      return;
+    }
+    var id = p1Stages[idx];
+    var el = document.getElementById(id);
+
+    // Hide previous stage panel, unless user is currently viewing a different panel while paused
+    if (idx > 0) {
+      var prevId = p1Stages[idx - 1];
+      if (!p1Paused || p1ActiveStageId === prevId) {
+        hidePanel(prevId);
+      }
+    }
+
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('active','processing');
+    // Show this stage's panel unless user paused the animation on a different stage
+    if (!p1Paused) {
+      p1ActiveStageId = id;
+      showPanel(id);
+    }
+    // If paused (e.g. user clicked during the inter-stage pause), don't override their view
+
+    waitPauseable(STAGE_HOLD_MS, function() {
+      // When we get here, check if user paused on a different stage
+      if (p1Paused) {
+        // Wait until resumed before continuing to next stage
+        var prevR = p1ResumeCallback;
+        p1ResumeCallback = function() {
+          p1ResumeCallback = prevR;
+          // Restore the animation's active stage display
+          if (p1ActiveStageId !== id) {
+            hidePanel(p1ActiveStageId);
+          }
+          p1ActiveStageId = id;
+          showPanel(id);
+          completeStage();
+        };
+        return;
+      }
+      completeStage();
+    });
+
+    function completeStage() {
+      el.classList.remove('processing');
+      el.classList.add('done','just-done');
+      document.getElementById(id + '-check').classList.add('visible');
+      var pct = Math.round(((idx + 1) / p1Stages.length) * 100);
+      progress.style.width = pct + '%';
+      idx++;
+      waitPauseable(STAGE_PAUSE_MS, runNext);
+    }
+  }
+  runNext();
+}
+
+// ── Pipeline 2 animation ───────────────────────────────────────
+var p2Running = false;
+
+function runPipeline2() {
+  if (p2Running) return;
+  p2Running = true;
+  p2Paused = false;
+  p2ResumeCallback = null;
+  p2ActiveStageId = null;
+  p2StaticActiveId = null;
+
+  var btn = document.getElementById('p2-run-btn');
+  var status = document.getElementById('p2-status');
+  var progress = document.getElementById('p2-progress');
+  var routing = document.getElementById('p2-routing');
+  var forkFull = document.getElementById('p2-fork-full');
+
+  btn.disabled = true;
+  btn.textContent = 'Running...';
+
+  var allIds = ['p2-s1','p2-s2a','p2-s2b','p2-s2c','p2-s2d','p2-s2e','p2-s2f','p2-s3','p2-s4','p2-s5','p2-s6'];
+  allIds.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) {
+      el.classList.remove('active','done','processing','just-done');
+      var chk = document.getElementById(id + '-check');
+      if (chk) chk.classList.remove('visible');
+    }
+    hidePanel(id);
+  });
+  hideSharedPanel(2);
+  routing.classList.remove('active');
+  forkFull.style.opacity = '1';
+  forkFull.style.transition = '';
+  progress.style.width = '0%';
+  status.className = 'status-chip status-running';
+  status.textContent = 'Running...';
+  document.getElementById('p2-paused-badge').classList.remove('visible');
+
+  var ragStages = ['p2-s2a','p2-s2b','p2-s2c','p2-s2d','p2-s2e'];
+  var postStages = ['p2-s3','p2-s4','p2-s5','p2-s6'];
+
+  // Pauseable wait for pipeline 2
+  function waitP2(ms, cb) {
+    var remaining = ms / speed;
+    var timer;
+    var paused = false;
+    var startedAt = Date.now();
+    var pollTimer;
+
+    function onFired() {
+      clearInterval(pollTimer);
+      p2ResumeCallback = prevResume;
+      cb();
+    }
+
+    function startTimer() {
+      startedAt = Date.now();
+      timer = setTimeout(onFired, remaining);
+    }
+
+    var prevResume = p2ResumeCallback;
+    p2ResumeCallback = function() {
+      if (paused) {
+        paused = false;
+        startTimer();
+      }
+      p2ResumeCallback = prevResume;
+    };
+
+    pollTimer = setInterval(function() {
+      if (!p2Running) { clearInterval(pollTimer); clearTimeout(timer); return; }
+      if (p2Paused && !paused) {
+        paused = true;
+        clearTimeout(timer);
+        remaining -= (Date.now() - startedAt);
+        if (remaining < 0) remaining = 0;
+        clearInterval(pollTimer);
+      }
+    }, 50);
+
+    if (p2Paused) {
+      paused = true;
+      clearInterval(pollTimer);
+    } else {
+      startTimer();
+    }
+  }
+
+  function animateStage(id, cb) {
+    var el = document.getElementById(id);
+    if (!el) { cb(); return; }
+
+    // Hide the previous active panel if it's not the one being jumped to via pause
+    if (p2ActiveStageId && p2ActiveStageId !== id) { hidePanel(p2ActiveStageId); }
+    p2ActiveStageId = id;
+
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('active','processing');
+    showPanel(id);
+
+    waitP2(STAGE_HOLD_MS, function() {
+      if (p2Paused) {
+        // Paused after hold — wait for resume before marking done and continuing
+        var prevR = p2ResumeCallback;
+        p2ResumeCallback = function() {
+          p2ResumeCallback = prevR;
+          if (p2ActiveStageId !== id) {
+            hidePanel(p2ActiveStageId);
+          }
+          p2ActiveStageId = id;
+          showPanel(id);
+          markDone();
+        };
+        return;
+      }
+      markDone();
+    });
+
+    function markDone() {
+      el.classList.remove('processing');
+      el.classList.add('done','just-done');
+      var chk = document.getElementById(id + '-check');
+      if (chk) chk.classList.add('visible');
+      waitP2(STAGE_PAUSE_MS, cb);
+    }
+  }
+
+  // Stage 1
+  animateStage('p2-s1', function() {
+    progress.style.width = '10%';
+
+    // Routing decision
+    routing.classList.add('active');
+    waitP2(900, function() {
+      forkFull.style.opacity = '0.35';
+      forkFull.style.transition = 'opacity 0.5s';
+      progress.style.width = '15%';
+
+      var ri = 0;
+      function runRag() {
+        if (ri >= ragStages.length) {
+          progress.style.width = '65%';
+          var pi = 0;
+          function runPost() {
+            if (pi >= postStages.length) {
+              progress.style.width = '100%';
+              setPaused(2, false);
+              status.className = 'status-chip status-done';
+              status.textContent = 'Complete';
+              btn.disabled = false;
+              btn.textContent = 'Run Again';
+              p2Running = false;
+              p2ActiveStageId = null;
+              hideSharedPanel(2);
+              return;
+            }
+            animateStage(postStages[pi], function() {
+              progress.style.width = (65 + (pi + 1) * 8) + '%';
+              pi++;
+              runPost();
+            });
+          }
+          runPost();
+          return;
+        }
+        animateStage(ragStages[ri], function() {
+          progress.style.width = (15 + (ri + 1) * 10) + '%';
+          ri++;
+          runRag();
+        });
+      }
+      runRag();
+    });
+  });
+}
+</script>
+</body>
+</html>
