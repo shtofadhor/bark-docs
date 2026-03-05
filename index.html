@@ -1287,13 +1287,13 @@ across 2 audit cycles
             <div class="dp-input"><div class="dp-label">Input</div><div class="dp-text">25,006 BFs in SQLite
 verified_vendors.json config
 tools-catalog.json</div></div>
-            <div class="dp-action"><div class="dp-label">Does</div><div class="dp-arrow">&#8594;</div><div class="dp-action-text">4 scans: vendor contamination, stale refs, false claims, tool contamination. Fixes in-place.</div></div>
+            <div class="dp-action"><div class="dp-label">Does</div><div class="dp-arrow">&#8594;</div><div class="dp-action-text">4 scans + fix in-place</div></div>
             <div class="dp-output"><div class="dp-label">Output</div><div class="dp-text">Drata → [redacted vendor]
 ISO 27001:2013 → 2022
 False SOC2/HITRUST claims stripped
 878 tool-contaminated BFs → HISTORICAL</div></div>
           </div>
-          <div class="dp-why"><div class="dp-why-label">Why</div>Client audit documents (Cat B/C) leak their tools into Midot's behavioral facts. Tool contamination detection uses source categories from document indexing — tools with only B/C sources are tagged HISTORICAL, tools with Cat A sources are kept. Deprecated tools (Trellix, McAfee) are always tagged. No manual ownership flags — ownership is derived automatically from the data. Also catches vendor contamination, stale ISO refs, and false compliance claims. Fatal gate — bad data in = bad answers out.</div>
+          <div class="dp-why"><div class="dp-why-label">Why</div>Client audit docs (Cat B/C) leak their tools into Midot's facts. This gate catches contamination before embeddings — bad data in = bad answers out.</div>
         </div>
       </div>
 
