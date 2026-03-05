@@ -2620,10 +2620,10 @@ function runPipeline1() {
 
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     el.classList.add('active','processing');
-    // Show this stage's panel unless user paused the animation on a different stage
+    // Show this stage's panel after scroll settles, unless user paused
     if (!p1Paused) {
       p1ActiveStageId = id;
-      showPanel(id);
+      setTimeout(function() { if (p1ActiveStageId === id) showPanel(id); }, 600);
     }
     // If paused (e.g. user clicked during the inter-stage pause), don't override their view
 
@@ -2651,6 +2651,7 @@ function runPipeline1() {
       el.classList.remove('processing');
       el.classList.add('done','just-done');
       document.getElementById(id + '-check').classList.add('visible');
+      hideSharedPanel(1);
       var pct = Math.round(((idx + 1) / p1Stages.length) * 100);
       progress.style.width = pct + '%';
       idx++;
